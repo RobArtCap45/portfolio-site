@@ -69,6 +69,64 @@
       letter-spacing: 4px; text-transform: uppercase;
       color: rgba(255,255,255,0.12);
     }
+
+    /* ── CASE STUDY PANEL ── */
+    #case-study {
+      position: fixed; inset: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px 20px;
+      background: rgba(4,4,10,0.86);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    #case-study.open { opacity: 1; pointer-events: auto; }
+    #cs-panel {
+      width: min(880px, 100%); max-height: 100%; overflow-y: auto;
+      background: rgba(14,14,26,0.92);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 18px; position: relative;
+      transform: translateY(24px) scale(0.98);
+      transition: transform 0.35s cubic-bezier(.2,.8,.2,1);
+      box-shadow: 0 40px 100px rgba(0,0,0,0.55);
+    }
+    #case-study.open #cs-panel { transform: translateY(0) scale(1); }
+    #cs-close {
+      position: absolute; top: 16px; right: 16px; z-index: 2;
+      width: 34px; height: 34px; border-radius: 50%; border: none;
+      background: rgba(0,0,0,0.35); color: rgba(255,255,255,0.85);
+      font-size: 18px; line-height: 1; cursor: pointer;
+      transition: background 0.2s;
+    }
+    #cs-close:hover { background: rgba(255,255,255,0.2); }
+    #cs-image {
+      width: 100%; height: 300px;
+      background-size: cover; background-position: center;
+      border-radius: 18px 18px 0 0;
+      background-color: rgba(255,255,255,0.04);
+    }
+    #cs-body { padding: 34px 40px 46px; }
+    #cs-category {
+      font-family: 'Space Mono', monospace; font-size: 10px;
+      letter-spacing: 4px; text-transform: uppercase;
+      color: rgba(120,170,255,0.9); margin-bottom: 12px;
+    }
+    #cs-title {
+      font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+      font-size: 30px; color: rgba(255,255,255,0.95); margin-bottom: 18px;
+    }
+    #cs-desc {
+      font-family: 'Space Grotesk', sans-serif; font-weight: 300;
+      font-size: 15px; line-height: 1.75; color: rgba(255,255,255,0.55);
+      max-width: 62ch;
+    }
+    #cs-placeholder-tag {
+      display: inline-block; margin-top: 22px;
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: rgba(255,180,80,0.7); border: 1px solid rgba(255,180,80,0.25);
+      border-radius: 4px; padding: 5px 9px;
+    }
   </style>
 </head>
 <body>
@@ -87,8 +145,22 @@
 
   <!-- BOTTOM NAV -->
   <nav id="bottomnav">
-    <span>drag to orbit &nbsp;·&nbsp; hover to explore</span>
+    <span>drag to orbit &nbsp;·&nbsp; hover to explore &nbsp;·&nbsp; click to open</span>
   </nav>
+
+  <!-- CASE STUDY PANEL -->
+  <div id="case-study">
+    <div id="cs-panel">
+      <button id="cs-close" aria-label="Close">&times;</button>
+      <div id="cs-image"></div>
+      <div id="cs-body">
+        <div id="cs-category"></div>
+        <h1 id="cs-title"></h1>
+        <p id="cs-desc"></p>
+        <span id="cs-placeholder-tag">placeholder — real copy pending</span>
+      </div>
+    </div>
+  </div>
 
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js" } }
@@ -598,6 +670,70 @@
     // Cache to avoid allocating a new array every frame
     const outerMeshes = allMarbles.map(m => m.outer);
 
+    // ── CASE STUDY PANEL ───────────────────────────────────────────
+    // Placeholder copy per portfolio category — swap in real project
+    // write-ups, links and images when ready.
+    const CASE_STUDIES = {
+      'Web Design':  { image: 'MonkeyGorillanation.gif' },
+      'Interactive': { image: 'cat bird.jpg' },
+      'UX/UI':       { image: 'Creativity.png' },
+      'Branding':    { image: 'treasure.jpg' },
+      'Graphic':     { image: 'c00e9d8eaa4182dec7504f124be642f8.jpg' },
+      'Engineering': { image: 'skeleton.png' },
+    };
+    const PLACEHOLDER_DESC = "This is a placeholder case study. Swap this text for the real project write-up — what the project was, the problem it solved, your role, and the outcome — plus a link to the live project if there is one.";
+
+    const csEl       = document.getElementById('case-study');
+    const csImage    = document.getElementById('cs-image');
+    const csCategory = document.getElementById('cs-category');
+    const csTitle    = document.getElementById('cs-title');
+    const csDesc     = document.getElementById('cs-desc');
+
+    function openCaseStudy(label) {
+      const cs = CASE_STUDIES[label];
+      if (!cs) return;
+      csImage.style.backgroundImage = `url("${encodeURI(cs.image)}")`;
+      csCategory.textContent = label;
+      csTitle.textContent = label;
+      csDesc.textContent = cs.desc || PLACEHOLDER_DESC;
+      csEl.classList.add('open');
+      cam.autoRotate = false;
+      clearTimeout(cam.resumeTimer);
+    }
+    function closeCaseStudy() {
+      csEl.classList.remove('open');
+      clearTimeout(cam.resumeTimer);
+      cam.resumeTimer = setTimeout(() => { cam.autoRotate = true; }, 600);
+    }
+    document.getElementById('cs-close').addEventListener('click', closeCaseStudy);
+    csEl.addEventListener('click', e => { if (e.target === csEl) closeCaseStudy(); });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') closeCaseStudy(); });
+
+    // Click (not drag) on a portfolio marble opens its case study.
+    let downX = 0, downY = 0;
+    canvas.addEventListener('mousedown', e => { downX = e.clientX; downY = e.clientY; });
+    canvas.addEventListener('mouseup', e => {
+      if (csEl.classList.contains('open')) return;
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
+      const m = allMarbles.find(mm => mm.outer === hit);
+      if (m && m.isPortfolio) openCaseStudy(m.label);
+    });
+    let downTX = 0, downTY = 0;
+    canvas.addEventListener('touchstart', e => {
+      const t = e.touches[0]; downTX = t.clientX; downTY = t.clientY;
+    }, { passive: true });
+    canvas.addEventListener('touchend', e => {
+      if (csEl.classList.contains('open')) return;
+      const t = e.changedTouches[0];
+      if (Math.hypot(t.clientX - downTX, t.clientY - downTY) > 8) return; // was a drag
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
+      const m = allMarbles.find(mm => mm.outer === hit);
+      if (m && m.isPortfolio) openCaseStudy(m.label);
+    });
+
     // ── MAIN LOOP — capped at 24 fps ──────────────────────────────
     const FRAME_MS = 1000 / 24;
     let prevFrameTime = 0;
@@ -636,6 +772,7 @@
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
         m.group.scale.setScalar(m.scaleCurrent);
       }
+      canvas.style.cursor = (!cam.dragging && allMarbles.some(m => m.hovered && m.isPortfolio)) ? 'pointer' : '';
 
       // Cursor world position + RGB trail
       updateCursorWorld();
