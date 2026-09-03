@@ -247,49 +247,6 @@
       })));
     }
 
-    // ── NEBULA BACKGROUND — slow drifting deep-space glow ────────────
-    // One giant enclosing sphere, seen from inside (BackSide). Cheap single
-    // noise lookup per pixel, kept very low-contrast/dark so it reads as
-    // atmosphere behind the stars rather than competing with the marbles.
-    const nebulaMat = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 } },
-      side: THREE.BackSide,
-      depthWrite: false,
-      vertexShader: `
-        varying vec3 vPos;
-        void main() {
-          vPos = position;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        varying vec3 vPos;
-        float hash(vec3 p) {
-          p = fract(p * vec3(443.8975, 397.2973, 491.1871));
-          p += dot(p.zxy, p.yxz + 19.19);
-          return fract(p.x * p.y * p.z);
-        }
-        float vnoise(vec3 p) {
-          vec3 i = floor(p), f = fract(p);
-          f = f*f*(3.0 - 2.0*f);
-          return mix(
-            mix(mix(hash(i),             hash(i+vec3(1,0,0)), f.x),
-                mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
-            mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
-                mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
-        }
-        void main() {
-          vec3 p = normalize(vPos) * 1.3 + vec3(uTime*0.012, uTime*0.007, -uTime*0.009);
-          float n = vnoise(p); // single octave — kept deliberately cheap, whole-screen cost
-          vec3 base = vec3(0.012, 0.012, 0.03);
-          vec3 glow = mix(vec3(0.10, 0.16, 0.42), vec3(0.24, 0.05, 0.22), n);
-          vec3 col = mix(base, glow, smoothstep(0.32, 0.82, n) * 0.85);
-          gl_FragColor = vec4(col, 1.0);
-        }
-      `,
-    });
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(70, 24, 16), nebulaMat));
 
     // ── LIGHTS ────────────────────────────────────────────────────
     scene.add(new THREE.AmbientLight(0x334466, 3));
@@ -983,7 +940,6 @@
 
       physicsStep(dt);
       updateTransition();
-      nebulaMat.uniforms.uTime.value = time;
 
       // Slowly rotate swirl backdrops on all marbles
       for (const m of allMarbles) {
