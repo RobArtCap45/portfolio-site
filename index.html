@@ -41,54 +41,70 @@
     }
     #topnav {
       top: 0; height: 54px;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 1px 0 0 rgba(120,170,255,0.18);
     }
     #bottomnav {
       bottom: 0; height: 42px;
       border-top: 1px solid rgba(255,255,255,0.06);
-      justify-content: center;
+      justify-content: center; gap: 12px;
     }
 
     /* RC logo mark */
     #logo {
+      display: flex; align-items: baseline; gap: 8px;
       font-family: 'Space Grotesk', sans-serif; font-weight: 700;
       font-size: 19px; letter-spacing: 6px; text-transform: uppercase;
       color: rgba(255,255,255,0.92);
-      text-shadow: 0 0 28px rgba(100,160,255,0.35);
+      text-shadow: 0 0 28px rgba(100,160,255,0.4);
       cursor: default; user-select: none; line-height: 1;
+      min-width: 2ch; /* reserve space so the decode-in doesn't jump */
     }
     #logo .wip-tag {
-      font-family: 'Space Mono', monospace; font-size: 7px;
-      letter-spacing: 2px; color: rgba(255,255,255,0.25);
-      vertical-align: super; margin-left: 3px; font-weight: 400;
+      font-family: 'Space Mono', monospace; font-size: 8px;
+      letter-spacing: 2px; text-transform: uppercase; font-weight: 400;
+      color: rgba(255,180,80,0.75); border: 1px solid rgba(255,180,80,0.3);
+      border-radius: 3px; padding: 3px 6px;
     }
 
     /* nav links + sound btn */
     #nav-right {
-      margin-left: auto; display: flex; align-items: center; gap: 30px;
+      margin-left: auto; display: flex; align-items: center; gap: 32px;
     }
     .nav-link {
+      display: flex; align-items: center; gap: 8px;
       font-family: 'Space Mono', monospace; font-size: 9px;
       letter-spacing: 4px; text-transform: uppercase;
-      color: rgba(255,255,255,0.38); text-decoration: none;
+      color: rgba(255,255,255,0.4); text-decoration: none;
       background: none; border: none; padding: 0; cursor: pointer;
       transition: color 0.2s;
     }
-    .nav-link:hover { color: rgba(255,255,255,0.9); }
+    .nav-link .nl-idx { color: rgba(120,170,255,0.75); font-size: 8px; }
+    .nav-link:hover { color: rgba(255,255,255,0.95); }
 
     #sound-btn {
-      background: none; border: none; padding: 0; cursor: pointer;
-      font-size: 17px; opacity: 0.42; transition: opacity 0.2s;
-      line-height: 1; color: white;
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      letter-spacing: 3px; text-transform: uppercase;
+      background: none; border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 3px; padding: 5px 8px; cursor: pointer;
+      color: rgba(120,170,255,0.85); opacity: 0.75;
+      transition: opacity 0.2s, border-color 0.2s;
     }
-    #sound-btn:hover { opacity: 0.9; }
-    #sound-btn.muted { opacity: 0.22; }
+    #sound-btn:hover { opacity: 1; border-color: rgba(120,170,255,0.4); }
+    #sound-btn.muted { color: rgba(255,255,255,0.3); opacity: 0.45; }
+
+    /* shared glitch-flicker — same effect used on the case-study title */
+    .glitch-flicker { animation: csGlitch 0.4s steps(2,end); }
 
     /* bottom hint */
     #bottomnav span {
+      display: flex; align-items: center; gap: 12px;
       font-family: 'Space Mono', monospace; font-size: 9px;
       letter-spacing: 4px; text-transform: uppercase;
-      color: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.14);
+    }
+    #bottomnav span::before, #bottomnav span::after {
+      content: ''; width: 20px; height: 1px; background: rgba(120,170,255,0.25);
     }
 
     /* ── CASE STUDY REVEAL (in-page, not a modal) ── */
@@ -137,7 +153,6 @@
       color: rgba(255,255,255,0.97); margin-bottom: 34px;
       min-height: 1em;
     }
-    #cs-title.glitching { animation: csGlitch 0.4s steps(2,end); }
     @keyframes csGlitch {
       0%   { text-shadow: none; transform: translateX(0); }
       15%  { text-shadow: -3px 0 rgba(255,60,90,0.75), 3px 0 rgba(60,190,255,0.75); transform: translateX(-2px); }
@@ -182,11 +197,11 @@
 <body>
   <!-- TOP NAV -->
   <nav id="topnav">
-    <div id="logo">RC<span class="wip-tag">wip</span></div>
+    <div id="logo"><span id="logo-mark">RC</span><span class="wip-tag">// wip</span></div>
     <div id="nav-right">
-      <a class="nav-link" href="about.html">About</a>
-      <a class="nav-link" href="contact.html">Contact</a>
-      <button id="sound-btn" title="Toggle sound">🔊</button>
+      <a class="nav-link" href="about.html"><span class="nl-idx">01</span>About</a>
+      <a class="nav-link" href="contact.html"><span class="nl-idx">02</span>Contact</a>
+      <button id="sound-btn" title="Toggle sound">[ SND ON ]</button>
     </div>
   </nav>
 
@@ -560,8 +575,17 @@
     soundBtn.addEventListener('click', e => {
       e.stopPropagation();
       soundEnabled = !soundEnabled;
-      soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
+      soundBtn.textContent = soundEnabled ? '[ SND ON ]' : '[ SND OFF ]';
       soundBtn.classList.toggle('muted', !soundEnabled);
+    });
+
+    // Nav — small glitch flick on hover, echoing the case-study title effect
+    document.querySelectorAll('.nav-link, #sound-btn').forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        el.classList.remove('glitch-flicker');
+        void el.offsetWidth;
+        el.classList.add('glitch-flicker');
+      });
     });
 
     window.addEventListener('mousemove', () => {
@@ -802,7 +826,7 @@
     function scrambleInto(el, finalText, duration = 850) {
       const startT = performance.now();
       const n = finalText.length;
-      el.classList.remove('glitching');
+      el.classList.remove('glitch-flicker');
       function frame(now) {
         const t = Math.min((now - startT) / duration, 1);
         let out = '';
@@ -817,12 +841,13 @@
         else {
           el.textContent = finalText;
           void el.offsetWidth; // restart the animation if already applied once
-          el.classList.add('glitching');
-          setTimeout(() => el.classList.remove('glitching'), 420);
+          el.classList.add('glitch-flicker');
+          setTimeout(() => el.classList.remove('glitch-flicker'), 420);
         }
       }
       requestAnimationFrame(frame);
     }
+    scrambleInto(document.getElementById('logo-mark'), 'RC', 700); // decode-in on load
 
     function startOpen(m) {
       if (phase !== 'idle') return;
