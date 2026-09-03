@@ -499,24 +499,22 @@
     function buildMarble(def, idx, tex = null) {
       const group = new THREE.Group();
 
-      // Outer glass shell — real PBR reflections (Fresnel + clearcoat + the
-      // procedural env map) instead of the old flat-opacity fake. Deliberately
-      // NOT using `transmission` — that feature makes three.js render an extra
-      // full-scene pass + mipmap chain every frame, which measured ~8x slower
-      // in testing. This gets most of the "real glass" look for a fraction
-      // of the cost, keeping performance headroom on ordinary/mobile GPUs.
+      // Outer glass shell — true refraction via `transmission` so light
+      // actually bends through the marble, not just a reflective sheen.
       const outer = new THREE.Mesh(
         new THREE.SphereGeometry(def.r, 24, 24),
         new THREE.MeshPhysicalMaterial({
           color:       0xffffff,
           metalness:   0,
-          roughness:   0.08,
+          roughness:   0.05,
+          transmission: 1,
+          thickness:   def.r * 1.6,
           ior:         1.5,
-          clearcoat:   0.6,
-          clearcoatRoughness: 0.15,
-          envMapIntensity: 1.6,
+          clearcoat:   0.4,
+          clearcoatRoughness: 0.12,
+          envMapIntensity: 1.4,
           transparent: true,
-          opacity:     0.32,
+          opacity:     1,
           depthWrite:  false,
         })
       );
@@ -915,7 +913,8 @@
       if (phase === 'break' || phase === 'close') {
         const t = Math.min(el / (phase === 'break' ? BREAK_S : CLOSE_S), 1);
         const k = phase === 'break' ? t : 1 - t; // k: 0=whole shell, 1=broken open
-        m.outer.material.opacity = 0.28 * (1 - k);
+        m.outer.material.opacity = 1 - k;
+        m.outer.material.clearcoat = 0.4 * (1 - k);
         m.innerGroup.scale.setScalar(1 - k);
         if (m.imagePlane) m.imagePlane.material.opacity = 0.72 + 0.28 * k;
 
