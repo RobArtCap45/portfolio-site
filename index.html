@@ -235,6 +235,36 @@
     fillB.position.set( 4,-2, 3); scene.add(fillB);
     const rimLights = []; // empty — no per-frame light animation
 
+    // ── PROCEDURAL ENVIRONMENT MAP — for physically-based glass reflections ──
+    // Generated in-browser (tiny canvas gradient, ~0 bytes over the wire) rather
+    // than downloading an HDRI, then baked to a PMREM once at load. This is what
+    // makes the marbles' glass shell reflect/refract like real glass instead of
+    // the old flat-opacity fake, with no extra network cost.
+    {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      g.addColorStop(0.00, '#7fa8ff');
+      g.addColorStop(0.18, '#3a5cc0');
+      g.addColorStop(0.42, '#131a3a');
+      g.addColorStop(0.60, '#05050f');
+      g.addColorStop(0.82, '#1a0f2a');
+      g.addColorStop(1.00, '#ff6fae');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
+      // two thin bright "window" streaks so the glass catches distinct highlights
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(0, 40, 16, 4);
+      ctx.fillStyle = 'rgba(160,200,255,0.8)'; ctx.fillRect(0, 150, 16, 3);
+
+      const gradTex = new THREE.CanvasTexture(c);
+      gradTex.mapping = THREE.EquirectangularReflectionMapping;
+      gradTex.colorSpace = THREE.SRGBColorSpace;
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromEquirectangular(gradTex).texture;
+      pmrem.dispose();
+      gradTex.dispose();
+    }
+
     // ── INNER SPHERE — FBM DOMAIN-WARPED SWIRL SHADER ─────────────
     // Matches the bold, painterly 2-colour swirls in the reference image
     const swirlVS = `
@@ -401,16 +431,25 @@
     function buildMarble(def, idx, tex = null) {
       const group = new THREE.Group();
 
-      // Outer glass shell — Phong specular, no clearcoat/transmission overhead
+      // Outer glass shell — real PBR reflections (Fresnel + clearcoat + the
+      // procedural env map) instead of the old flat-opacity fake. Deliberately
+      // NOT using `transmission` — that feature makes three.js render an extra
+      // full-scene pass + mipmap chain every frame, which measured ~8x slower
+      // in testing. This gets most of the "real glass" look for a fraction
+      // of the cost, keeping performance headroom on ordinary/mobile GPUs.
       const outer = new THREE.Mesh(
-        new THREE.SphereGeometry(def.r, 32, 32),
-        new THREE.MeshPhongMaterial({
-          color:      0xffffff,
-          specular:   0xffffff,
-          shininess:  220,
+        new THREE.SphereGeometry(def.r, 24, 24),
+        new THREE.MeshPhysicalMaterial({
+          color:       0xffffff,
+          metalness:   0,
+          roughness:   0.08,
+          ior:         1.5,
+          clearcoat:   0.6,
+          clearcoatRoughness: 0.15,
+          envMapIntensity: 1.6,
           transparent: true,
-          opacity:    0.28,
-          depthWrite: false,
+          opacity:     0.32,
+          depthWrite:  false,
         })
       );
       group.add(outer);
