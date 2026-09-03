@@ -107,7 +107,7 @@
 
     const scene  = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.1, 200);
-    camera.position.set(0, 1, 6);
+    camera.position.set(0, 1, 4.8);
     camera.lookAt(0, 0, 0);
 
     // ── STARS ─────────────────────────────────────────────────────
@@ -275,9 +275,9 @@
     };
 
     // ── MARBLE DEFINITIONS ────────────────────────────────────────
-    // 4 discrete size steps — nothing too dominant
-    // s1=0.30  s2=0.38  s3=0.46  s4=0.54
-    const S = [0, 0.30, 0.38, 0.46, 0.54]; // index = size 1-4
+    // 4 discrete size steps
+    // s1=0.42  s2=0.53  s3=0.64  s4=0.75
+    const S = [0, 0.42, 0.53, 0.64, 0.75]; // index = size 1-4
 
     const PORTFOLIO = [
       { label: 'Web Design',   glass: 0xffffff, c1: 0x00aacc, c2: 0xaadd00, r: S[3] },
@@ -553,7 +553,7 @@
       mouse.y=-(e.clientY/innerHeight)*2+1;
     });
 
-    const cam = { theta:0, phi:0.28, radius:6, dragging:false, lastX:0, lastY:0,
+    const cam = { theta:0, phi:0.28, radius:4.8, dragging:false, lastX:0, lastY:0,
                   velTheta:0, velPhi:0, autoRotate:true, resumeTimer:null };
     const canvas = renderer.domElement;
     canvas.addEventListener('mousedown', e => {
