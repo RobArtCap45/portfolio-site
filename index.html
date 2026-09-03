@@ -70,63 +70,62 @@
       color: rgba(255,255,255,0.12);
     }
 
-    /* ── CASE STUDY PANEL ── */
-    #case-study {
-      position: fixed; inset: 0; z-index: 200;
-      display: flex; align-items: center; justify-content: center;
-      padding: 40px 20px;
-      background: rgba(4,4,10,0.86);
-      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-      opacity: 0; pointer-events: none;
-      transition: opacity 0.35s ease;
+    /* ── CASE STUDY REVEAL (in-page, not a modal) ── */
+    /* Locked at top by default; unlocked only while a marble is open */
+    body.expanded { overflow-y: auto; }
+
+    /* pointer-events:none so the transparent spacer never steals clicks meant for
+       the hero canvas beneath it; .case-panel opts back in for its own content */
+    #case-content { position: relative; z-index: 5; pointer-events: none; }
+    .case-spacer { height: 100vh; } /* lets the hero canvas show through untouched */
+    .case-panel {
+      position: relative; pointer-events: auto;
+      background: linear-gradient(180deg, rgba(6,6,14,0) 0%, #06060e 160px, #06060e 100%);
     }
-    #case-study.open { opacity: 1; pointer-events: auto; }
-    #cs-panel {
-      width: min(880px, 100%); max-height: 100%; overflow-y: auto;
-      background: rgba(14,14,26,0.92);
-      border: 1px solid rgba(255,255,255,0.09);
-      border-radius: 18px; position: relative;
-      transform: translateY(24px) scale(0.98);
-      transition: transform 0.35s cubic-bezier(.2,.8,.2,1);
-      box-shadow: 0 40px 100px rgba(0,0,0,0.55);
+    .case-inner {
+      max-width: 680px; margin: 0 auto;
+      padding: 60px 32px 160px;
+      opacity: 0; transform: translateY(26px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
     }
-    #case-study.open #cs-panel { transform: translateY(0) scale(1); }
-    #cs-close {
-      position: absolute; top: 16px; right: 16px; z-index: 2;
-      width: 34px; height: 34px; border-radius: 50%; border: none;
-      background: rgba(0,0,0,0.35); color: rgba(255,255,255,0.85);
-      font-size: 18px; line-height: 1; cursor: pointer;
-      transition: background 0.2s;
-    }
-    #cs-close:hover { background: rgba(255,255,255,0.2); }
-    #cs-image {
-      width: 100%; height: 300px;
-      background-size: cover; background-position: center;
-      border-radius: 18px 18px 0 0;
-      background-color: rgba(255,255,255,0.04);
-    }
-    #cs-body { padding: 34px 40px 46px; }
+    body.expanded .case-inner { opacity: 1; transform: translateY(0); }
     #cs-category {
       font-family: 'Space Mono', monospace; font-size: 10px;
       letter-spacing: 4px; text-transform: uppercase;
-      color: rgba(120,170,255,0.9); margin-bottom: 12px;
+      color: rgba(120,170,255,0.9); margin-bottom: 14px;
     }
     #cs-title {
       font-family: 'Space Grotesk', sans-serif; font-weight: 700;
-      font-size: 30px; color: rgba(255,255,255,0.95); margin-bottom: 18px;
+      font-size: 36px; color: rgba(255,255,255,0.95); margin-bottom: 20px;
     }
     #cs-desc {
       font-family: 'Space Grotesk', sans-serif; font-weight: 300;
-      font-size: 15px; line-height: 1.75; color: rgba(255,255,255,0.55);
+      font-size: 16px; line-height: 1.8; color: rgba(255,255,255,0.55);
       max-width: 62ch;
     }
     #cs-placeholder-tag {
-      display: inline-block; margin-top: 22px;
+      display: inline-block; margin-top: 26px;
       font-family: 'Space Mono', monospace; font-size: 9px;
       letter-spacing: 2px; text-transform: uppercase;
       color: rgba(255,180,80,0.7); border: 1px solid rgba(255,180,80,0.25);
       border-radius: 4px; padding: 5px 9px;
     }
+
+    #back-btn {
+      position: fixed; bottom: 26px; right: 26px; z-index: 150;
+      font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 3px;
+      text-transform: uppercase; color: rgba(255,255,255,0.7);
+      background: rgba(10,10,20,0.7); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px; padding: 12px 18px; cursor: pointer;
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      opacity: 0; pointer-events: none; transform: translateY(8px);
+      transition: opacity 0.3s ease, transform 0.3s ease, background 0.2s;
+    }
+    #back-btn:hover { background: rgba(255,255,255,0.14); }
+    body.expanded #back-btn { opacity: 1; pointer-events: auto; transform: translateY(0); }
+
+    #bottomnav { transition: opacity 0.3s ease; }
+    body.expanded #bottomnav { opacity: 0; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -148,19 +147,19 @@
     <span>drag to orbit &nbsp;·&nbsp; hover to explore &nbsp;·&nbsp; click to open</span>
   </nav>
 
-  <!-- CASE STUDY PANEL -->
-  <div id="case-study">
-    <div id="cs-panel">
-      <button id="cs-close" aria-label="Close">&times;</button>
-      <div id="cs-image"></div>
-      <div id="cs-body">
+  <!-- CASE STUDY REVEAL — in-page section below the hero, not a popup -->
+  <section id="case-content">
+    <div class="case-spacer"></div>
+    <div class="case-panel">
+      <div class="case-inner">
         <div id="cs-category"></div>
         <h1 id="cs-title"></h1>
         <p id="cs-desc"></p>
         <span id="cs-placeholder-tag">placeholder — real copy pending</span>
       </div>
     </div>
-  </div>
+  </section>
+  <button id="back-btn">↑ back to marbles</button>
 
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js" } }
@@ -505,6 +504,7 @@
       const sub=dt/SUBSTEPS;
       for (let s=0; s<SUBSTEPS; s++) {
         for (const m of allMarbles) {
+          if (m === active) continue; // being animated by the reveal transition instead
           const len=m.pos.length();
           if (len>0.001) m.vel.addScaledVector(m.pos,-GRAVITY*sub/len);
           const maxR=BOUND_R-m.radius;
@@ -512,11 +512,12 @@
           m.vel.multiplyScalar(1-DRAG*sub);
           const spd=m.vel.length(); if(spd>9) m.vel.multiplyScalar(9/spd);
         }
-        for (const m of allMarbles) m.pos.addScaledVector(m.vel,sub);
+        for (const m of allMarbles) { if (m !== active) m.pos.addScaledVector(m.vel,sub); }
         for (let iter=0; iter<2; iter++) { // was 3 collision iterations
           for (let i=0;i<allMarbles.length;i++) {
             for (let j=i+1;j<allMarbles.length;j++) {
               const a=allMarbles[i],b=allMarbles[j];
+              if (a === active || b === active) continue;
               const dx=a.pos.x-b.pos.x,dy=a.pos.y-b.pos.y,dz=a.pos.z-b.pos.z;
               const d2=dx*dx+dy*dy+dz*dz, min=a.radius+b.radius;
               if (d2<min*min&&d2>1e-6) {
@@ -533,7 +534,7 @@
           }
         }
       }
-      for (const m of allMarbles) m.group.position.copy(m.pos);
+      for (const m of allMarbles) { if (m !== active) m.group.position.copy(m.pos); }
     }
 
     // ── CURSOR WORLD POSITION (cheap — project onto near sphere) ──
@@ -626,9 +627,10 @@
     });
 
     const cam = { theta:0, phi:0.28, radius:4.8, dragging:false, lastX:0, lastY:0,
-                  velTheta:0, velPhi:0, autoRotate:true, resumeTimer:null };
+                  velTheta:0, velPhi:0, autoRotate:true, resumeTimer:null, locked:false };
     const canvas = renderer.domElement;
     canvas.addEventListener('mousedown', e => {
+      if (phase !== 'idle') return; // frozen while a marble is opening/open/closing
       e.preventDefault(); cam.dragging=true; cam.autoRotate=false;
       cam.velTheta=0; cam.velPhi=0; cam.lastX=e.clientX; cam.lastY=e.clientY;
       canvas.classList.add('dragging'); clearTimeout(cam.resumeTimer);
@@ -647,6 +649,7 @@
       cam.resumeTimer=setTimeout(()=>{ cam.autoRotate=true; },2500);
     });
     canvas.addEventListener('touchstart', e=>{
+      if (phase !== 'idle') return;
       e.preventDefault(); const t=e.touches[0];
       cam.dragging=true;cam.autoRotate=false;cam.velTheta=0;cam.velPhi=0;
       cam.lastX=t.clientX;cam.lastY=t.clientY;clearTimeout(cam.resumeTimer);
@@ -670,68 +673,132 @@
     // Cache to avoid allocating a new array every frame
     const outerMeshes = allMarbles.map(m => m.outer);
 
-    // ── CASE STUDY PANEL ───────────────────────────────────────────
-    // Placeholder copy per portfolio category — swap in real project
-    // write-ups, links and images when ready.
-    const CASE_STUDIES = {
-      'Web Design':  { image: 'MonkeyGorillanation.gif' },
-      'Interactive': { image: 'cat bird.jpg' },
-      'UX/UI':       { image: 'Creativity.png' },
-      'Branding':    { image: 'treasure.jpg' },
-      'Graphic':     { image: 'c00e9d8eaa4182dec7504f124be642f8.jpg' },
-      'Engineering': { image: 'skeleton.png' },
-    };
+    // ── CASE STUDY REVEAL ────────────────────────────────────────────
+    // Clicking a portfolio marble: it grows and floats out of the cluster
+    // toward a frozen camera, its glass shell dissolves in a burst of
+    // light revealing the image inside, then the page (not a popup —
+    // an in-flow section already sitting below the fold) is smooth-
+    // scrolled into view. Closing reverses all of it and hands the
+    // marble back to the physics sim, which pulls it back into the pile.
     const PLACEHOLDER_DESC = "This is a placeholder case study. Swap this text for the real project write-up — what the project was, the problem it solved, your role, and the outcome — plus a link to the live project if there is one.";
+    const CASE_COPY = {}; // e.g. CASE_COPY['Web Design'] = { desc: '...' } to override the placeholder
 
-    const csEl       = document.getElementById('case-study');
-    const csImage    = document.getElementById('cs-image');
+    const LAUNCH_S = 0.62, BREAK_S = 0.30, CLOSE_S = 0.55;
+    const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+
+    let phase = 'idle'; // idle | launch | break | open | close
+    let active = null;
+    let phaseStart = 0;
+    const launchTarget = new THREE.Vector3();
+    const launchStart   = new THREE.Vector3();
+
+    // One-shot flash ring at the moment the shell breaks
+    const burstMat  = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false });
+    const burstMesh = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 48), burstMat);
+    burstMesh.visible = false;
+    scene.add(burstMesh);
+
     const csCategory = document.getElementById('cs-category');
-    const csTitle    = document.getElementById('cs-title');
-    const csDesc     = document.getElementById('cs-desc');
+    const csTitle     = document.getElementById('cs-title');
+    const csDesc      = document.getElementById('cs-desc');
 
-    function openCaseStudy(label) {
-      const cs = CASE_STUDIES[label];
-      if (!cs) return;
-      csImage.style.backgroundImage = `url("${encodeURI(cs.image)}")`;
-      csCategory.textContent = label;
-      csTitle.textContent = label;
-      csDesc.textContent = cs.desc || PLACEHOLDER_DESC;
-      csEl.classList.add('open');
-      cam.autoRotate = false;
+    function startOpen(m) {
+      if (phase !== 'idle') return;
+      active = m; phase = 'launch'; phaseStart = time;
+      launchStart.copy(m.pos);
+      cam.locked = true; cam.dragging = false; cam.autoRotate = false;
+      cam.velTheta = 0; cam.velPhi = 0;
       clearTimeout(cam.resumeTimer);
+      canvas.classList.remove('dragging');
+      const fwd = new THREE.Vector3();
+      camera.getWorldDirection(fwd);
+      launchTarget.copy(camera.position).addScaledVector(fwd, 3.1);
     }
-    function closeCaseStudy() {
-      csEl.classList.remove('open');
-      clearTimeout(cam.resumeTimer);
-      cam.resumeTimer = setTimeout(() => { cam.autoRotate = true; }, 600);
+    function startClose() {
+      if (phase !== 'open') return;
+      phase = 'close'; phaseStart = time;
+      document.body.classList.remove('expanded');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-    document.getElementById('cs-close').addEventListener('click', closeCaseStudy);
-    csEl.addEventListener('click', e => { if (e.target === csEl) closeCaseStudy(); });
-    window.addEventListener('keydown', e => { if (e.key === 'Escape') closeCaseStudy(); });
+    document.getElementById('back-btn').addEventListener('click', startClose);
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') startClose(); });
 
-    // Click (not drag) on a portfolio marble opens its case study.
+    function updateTransition() {
+      if (phase === 'idle' || !active) return;
+      const m = active;
+      const el = time - phaseStart;
+
+      if (phase === 'launch') {
+        const t = Math.min(el / LAUNCH_S, 1);
+        const e = easeInOut(t);
+        m.pos.lerpVectors(launchStart, launchTarget, e);
+        m.vel.set(0, 0, 0);
+        m.group.position.copy(m.pos);
+        m.group.scale.setScalar(1 + e * 1.4); // grow to 2.4x
+        if (t >= 1) {
+          phase = 'break'; phaseStart = time;
+          burstMesh.position.copy(m.pos);
+          burstMesh.scale.setScalar(m.radius * 1.4);
+          burstMesh.visible = true;
+          burstMat.opacity = 1;
+        }
+        return;
+      }
+
+      if (phase === 'break' || phase === 'close') {
+        const t = Math.min(el / (phase === 'break' ? BREAK_S : CLOSE_S), 1);
+        const k = phase === 'break' ? t : 1 - t; // k: 0=whole shell, 1=broken open
+        m.outer.material.opacity = 0.28 * (1 - k);
+        m.innerGroup.scale.setScalar(1 - k);
+        if (m.imagePlane) m.imagePlane.material.opacity = 0.72 + 0.28 * k;
+
+        if (phase === 'break') {
+          burstMesh.quaternion.copy(camera.quaternion);
+          burstMesh.scale.setScalar(m.radius * (1.4 + t * 2.4));
+          burstMat.opacity = 1 - t;
+          if (t >= 1) {
+            burstMesh.visible = false;
+            phase = 'open';
+            csCategory.textContent = m.label;
+            csTitle.textContent = m.label;
+            csDesc.textContent = (CASE_COPY[m.label] && CASE_COPY[m.label].desc) || PLACEHOLDER_DESC;
+            document.body.classList.add('expanded');
+            requestAnimationFrame(() => window.scrollTo({ top: innerHeight, behavior: 'smooth' }));
+          }
+        } else if (t >= 1) {
+          m.scaleCurrent = m.group.scale.x; // let the normal hover lerp ease it back to 1
+          m.vel.set((Math.random()-0.5)*0.6, 0.25, (Math.random()-0.5)*0.6);
+          phase = 'idle'; active = null; cam.locked = false;
+          cam.resumeTimer = setTimeout(() => { cam.autoRotate = true; }, 1200);
+        }
+        return;
+      }
+      // phase === 'open': hold steady, nothing to animate
+    }
+
+    // Click (not drag) on a portfolio marble starts the reveal.
     let downX = 0, downY = 0;
     canvas.addEventListener('mousedown', e => { downX = e.clientX; downY = e.clientY; });
     canvas.addEventListener('mouseup', e => {
-      if (csEl.classList.contains('open')) return;
+      if (phase !== 'idle') return;
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
       raycaster.setFromCamera(mouse, camera);
       const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
       const m = allMarbles.find(mm => mm.outer === hit);
-      if (m && m.isPortfolio) openCaseStudy(m.label);
+      if (m && m.isPortfolio) startOpen(m);
     });
     let downTX = 0, downTY = 0;
     canvas.addEventListener('touchstart', e => {
       const t = e.touches[0]; downTX = t.clientX; downTY = t.clientY;
     }, { passive: true });
     canvas.addEventListener('touchend', e => {
-      if (csEl.classList.contains('open')) return;
+      if (phase !== 'idle') return;
       const t = e.changedTouches[0];
       if (Math.hypot(t.clientX - downTX, t.clientY - downTY) > 8) return; // was a drag
       raycaster.setFromCamera(mouse, camera);
       const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
       const m = allMarbles.find(mm => mm.outer === hit);
-      if (m && m.isPortfolio) openCaseStudy(m.label);
+      if (m && m.isPortfolio) startOpen(m);
     });
 
     // ── MAIN LOOP — capped at 24 fps ──────────────────────────────
@@ -747,19 +814,22 @@
       time += dt;
 
       physicsStep(dt);
+      updateTransition();
 
       // Slowly rotate swirl backdrops on all marbles
       for (const m of allMarbles) {
+        if (m === active) continue;
         m.innerGroup.rotation.y += dt * 0.05;
       }
 
       // Hover — reuse cached array, no allocation
       raycaster.setFromCamera(mouse, camera);
-      const hitObj = cam.dragging
+      const hitObj = (cam.dragging || phase !== 'idle')
         ? null
         : raycaster.intersectObjects(outerMeshes)[0]?.object ?? null;
 
       for (const m of allMarbles) {
+        if (m === active) continue; // scale/position owned by the reveal transition
         m.hovered = m.outer === hitObj;
         if (m.hovered && !m.wasHovered) {
           playGlassClink();
@@ -772,24 +842,26 @@
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
         m.group.scale.setScalar(m.scaleCurrent);
       }
-      canvas.style.cursor = (!cam.dragging && allMarbles.some(m => m.hovered && m.isPortfolio)) ? 'pointer' : '';
+      canvas.style.cursor = (!cam.dragging && phase === 'idle' && allMarbles.some(m => m.hovered && m.isPortfolio)) ? 'pointer' : '';
 
       // Cursor world position + RGB trail
       updateCursorWorld();
       updateTrail();
 
-      // Camera
-      if (cam.autoRotate) {
-        cam.theta+=dt*0.045; cam.phi=0.28*Math.sin(time*0.17);
-      } else if (!cam.dragging) {
-        cam.velTheta*=0.88; cam.velPhi*=0.88;
-        cam.theta+=cam.velTheta; cam.phi+=cam.velPhi;
-        cam.phi=Math.max(-1.3,Math.min(1.3,cam.phi));
+      // Camera — frozen while the reveal transition owns it
+      if (!cam.locked) {
+        if (cam.autoRotate) {
+          cam.theta+=dt*0.045; cam.phi=0.28*Math.sin(time*0.17);
+        } else if (!cam.dragging) {
+          cam.velTheta*=0.88; cam.velPhi*=0.88;
+          cam.theta+=cam.velTheta; cam.phi+=cam.velPhi;
+          cam.phi=Math.max(-1.3,Math.min(1.3,cam.phi));
+        }
+        camera.position.x=cam.radius*Math.cos(cam.phi)*Math.sin(cam.theta);
+        camera.position.y=cam.radius*Math.sin(cam.phi);
+        camera.position.z=cam.radius*Math.cos(cam.phi)*Math.cos(cam.theta);
+        camera.lookAt(0,0,0);
       }
-      camera.position.x=cam.radius*Math.cos(cam.phi)*Math.sin(cam.theta);
-      camera.position.y=cam.radius*Math.sin(cam.phi);
-      camera.position.z=cam.radius*Math.cos(cam.phi)*Math.cos(cam.theta);
-      camera.lookAt(0,0,0);
 
       // Lights are fixed — no per-frame orbit math
 
