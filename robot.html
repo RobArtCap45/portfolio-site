@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robert Capron</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #06060e; overflow: hidden; }
+    canvas { position: fixed; top: 0; left: 0; display: block; cursor: grab; }
+    canvas.dragging { cursor: grabbing; }
+    #ui { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+    /* ── NAV BARS ── */
+    #topnav, #bottomnav {
+      position: fixed; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; padding: 0 28px;
+      background: rgba(6,6,14,0.62);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    #topnav {
+      top: 0; height: 54px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    #bottomnav {
+      bottom: 0; height: 42px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      justify-content: center;
+    }
+
+    /* RC logo mark */
+    #logo {
+      font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+      font-size: 19px; letter-spacing: 6px; text-transform: uppercase;
+      color: rgba(255,255,255,0.92);
+      text-shadow: 0 0 28px rgba(100,160,255,0.35);
+      cursor: default; user-select: none; line-height: 1;
+    }
+    #logo .wip-tag {
+      font-family: 'Space Mono', monospace; font-size: 7px;
+      letter-spacing: 2px; color: rgba(255,255,255,0.25);
+      vertical-align: super; margin-left: 3px; font-weight: 400;
+    }
+
+    /* nav links + sound btn */
+    #nav-right {
+      margin-left: auto; display: flex; align-items: center; gap: 30px;
+    }
+    .nav-link {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      letter-spacing: 4px; text-transform: uppercase;
+      color: rgba(255,255,255,0.38); text-decoration: none;
+      background: none; border: none; padding: 0; cursor: pointer;
+      transition: color 0.2s;
+    }
+    .nav-link:hover { color: rgba(255,255,255,0.9); }
+
+    #sound-btn {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font-size: 17px; opacity: 0.42; transition: opacity 0.2s;
+      line-height: 1; color: white;
+    }
+    #sound-btn:hover { opacity: 0.9; }
+    #sound-btn.muted { opacity: 0.22; }
+
+    /* bottom hint */
+    #bottomnav span {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      letter-spacing: 4px; text-transform: uppercase;
+      color: rgba(255,255,255,0.12);
+    }
+  </style>
+</head>
+<body>
+  <!-- TOP NAV -->
+  <nav id="topnav">
+    <div id="logo">RC<span class="wip-tag">wip · robot</span></div>
+    <div id="nav-right">
+      <a class="nav-link" href="about.html">About</a>
+      <a class="nav-link" href="contact.html">Contact</a>
+      <button id="sound-btn" title="Toggle sound">🔊</button>
+    </div>
+  </nav>
+
+  <!-- 3-D LABELS -->
+  <div id="ui"></div>
+
+  <!-- BOTTOM NAV -->
+  <nav id="bottomnav">
+    <span>drag to orbit &nbsp;·&nbsp; hover to explore</span>
+  </nav>
+
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js" } }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ── RENDERER ──────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.0)); // hard cap at 1× — biggest single GPU win
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.35;
+    document.body.insertBefore(renderer.domElement, document.getElementById('ui'));
+
+    const scene  = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x06060e, 0.05);
+    const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
+    camera.position.set(0, 1.6, 10.5);
+    camera.lookAt(0, 0.4, 0);
+
+    // ── STARS ─────────────────────────────────────────────────────
+    {
+      const n = 300, pos = new Float32Array(n*3);
+      for (let i = 0; i < n*3; i++) pos[i] = (Math.random()-.5)*150;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({
+        color: 0xffffff, size: 0.07, sizeAttenuation: true, transparent: true, opacity: 0.4,
+      })));
+    }
+
+    // ── LIGHTS ────────────────────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x334466, 3));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 5);
+    keyLight.position.set(5, 8, 6);
+    scene.add(keyLight);
+    // Two fixed coloured fills — no per-frame orbit math
+    const fillA = new THREE.PointLight(0x4488ff, 3, 12);
+    fillA.position.set(-4, 3, 3); scene.add(fillA);
+    const fillB = new THREE.PointLight(0xff44aa, 3, 12);
+    fillB.position.set( 4,-2, 3); scene.add(fillB);
+    const rimLights = []; // empty — no per-frame light animation
+
+    // ── INNER SPHERE — FBM DOMAIN-WARPED SWIRL SHADER ─────────────
+    // Matches the bold, painterly 2-colour swirls in the reference image
+    const swirlVS = `
+      varying vec3 vPos;
+      varying vec3 vNormal;
+      void main() {
+        vPos    = position;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const swirlFS = `
+      uniform vec3  uC1;   // primary colour
+      uniform vec3  uC2;   // secondary colour
+      uniform float uSeed; // per-marble offset
+      varying vec3  vPos;
+      varying vec3  vNormal;
+
+      // Value noise hash
+      float hash(vec3 p) {
+        p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+        p += dot(p.zxy, p.yxz + 19.19);
+        return fract(p.x * p.y * p.z);
+      }
+
+      // Smooth value noise
+      float vnoise(vec3 p) {
+        vec3 i = floor(p), f = fract(p);
+        f = f*f*(3.0 - 2.0*f);
+        return mix(
+          mix(mix(hash(i),               hash(i+vec3(1,0,0)), f.x),
+              mix(hash(i+vec3(0,1,0)),   hash(i+vec3(1,1,0)), f.x), f.y),
+          mix(mix(hash(i+vec3(0,0,1)),   hash(i+vec3(1,0,1)), f.x),
+              mix(hash(i+vec3(0,1,1)),   hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+      }
+
+      // 2-octave fBm (cheaper — was 3)
+      float fbm(vec3 p) {
+        float v=0.0, a=0.5;
+        for (int i=0; i<2; i++) {
+          v += a * vnoise(p);
+          p  = p * 2.2 + vec3(1.7, 9.2, 5.8);
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      void main() {
+        vec3 p = vPos * 2.4 + uSeed;
+
+        // Single-level domain warp (was 2 levels — halves shader cost)
+        float q = fbm(p);
+        float f = fbm(p + vec3(q*2.2, q*1.6, q*0.9));
+
+        // Broad bands between the two colours (bold, like the reference)
+        float t = smoothstep(0.28, 0.72, f);
+
+        // Thin accent veins running through the swirl
+        float vein = pow(max(0.0, sin(f * 12.566)), 6.0) * 0.28;
+
+        vec3 col = mix(uC1, uC2, clamp(t + vein, 0.0, 1.0));
+
+        // Diffuse shading so the sphere reads as 3D
+        float diff = max(dot(vNormal, normalize(vec3(0.5, 1.0, 0.8))), 0.0) * 0.55 + 0.45;
+        col = col * diff + mix(uC1, uC2, 0.5) * 0.45;
+
+        gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+      }
+    `;
+
+
+
+    // ── RGB BEAM TRAIL — camera-facing ribbon mesh ───────────────
+    // Ring-buffer of world-space positions (oldest=0, newest=TRAIL_N-1)
+    const TRAIL_N    = 48;
+    const BEAM_HW    = 0.020;                          // half-width at head (world units)
+    const trailPosArr = new Float32Array(TRAIL_N * 3); // initialised at 0,0,0
+    let   trailSeeded = false;
+
+    // Ribbon: 2 edge verts per trail point, quads between consecutive pairs
+    const ribPosArr = new Float32Array(TRAIL_N * 2 * 3);
+    const ribColArr = new Float32Array(TRAIL_N * 2 * 3);
+    const ribIdxArr = new Uint16Array((TRAIL_N - 1) * 6);
+    for (let i = 0; i < TRAIL_N - 1; i++) {
+      const v = i * 2, ii = i * 6;
+      ribIdxArr[ii]   = v;   ribIdxArr[ii+1] = v+2; ribIdxArr[ii+2] = v+1;
+      ribIdxArr[ii+3] = v+1; ribIdxArr[ii+4] = v+2; ribIdxArr[ii+5] = v+3;
+    }
+    const ribGeo = new THREE.BufferGeometry();
+    ribGeo.setAttribute('position', new THREE.BufferAttribute(ribPosArr, 3));
+    ribGeo.setAttribute('color',    new THREE.BufferAttribute(ribColArr, 3));
+    ribGeo.setIndex(new THREE.BufferAttribute(ribIdxArr, 1));
+
+    const ribMesh = new THREE.Mesh(ribGeo, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      side: THREE.DoubleSide,
+    }));
+    ribMesh.frustumCulled = false;
+    scene.add(ribMesh);
+
+    // Reusable vectors for ribbon orientation
+    const _hslCol = new THREE.Color();
+    const _seg    = new THREE.Vector3();
+    const _perp   = new THREE.Vector3();
+    const _camFwd = new THREE.Vector3();
+    const _camRt  = new THREE.Vector3();
+
+    // ── TEXTURE LOADER ────────────────────────────────────────────
+    const texLoader = new THREE.TextureLoader();
+    function loadTex(path, pixelated = false) {
+      const t = texLoader.load(path);
+      t.minFilter = pixelated ? THREE.NearestFilter : THREE.LinearMipmapLinearFilter;
+      t.magFilter = pixelated ? THREE.NearestFilter : THREE.LinearFilter;
+      return t;
+    }
+
+    // ── CIRCULAR VIGNETTE MASK for sprites ───────────────────────
+    // Fades sprite edges to transparent so it looks like a round window
+    const maskCvs = document.createElement('canvas');
+    maskCvs.width = maskCvs.height = 256;
+    const mCtx = maskCvs.getContext('2d');
+    const mGrad = mCtx.createRadialGradient(128,128,0, 128,128,128);
+    mGrad.addColorStop(0.0,  'white');
+    mGrad.addColorStop(0.72, 'white');        // full opacity to 72 % of radius
+    mGrad.addColorStop(1.0,  'rgba(0,0,0,0)');// transparent at edge
+    mCtx.fillStyle = mGrad;
+    mCtx.fillRect(0, 0, 256, 256);
+    const spriteMask = new THREE.CanvasTexture(maskCvs);
+
+    // One image per portfolio marble — assigned by visual fit
+    const imgTex = {
+      'Web Design':  loadTex('MonkeyGorillanation.gif', true),       // pixelated web artifact → keep it crunchy
+      'Interactive': loadTex('cat bird.jpg'),                         // warm fantasy painting
+      'UX/UI':       loadTex('Creativity.png'),                       // chaotic vibrant illustration
+      'Branding':    loadTex('treasure.jpg'),                         // rich illustrated world
+      'Graphic':     loadTex('c00e9d8eaa4182dec7504f124be642f8.jpg'), // bold comic art
+      'Engineering': loadTex('skeleton.png'),                         // dark + structured
+    };
+
+    // ── MARBLE DEFINITIONS ────────────────────────────────────────
+    // 4 discrete size steps — nothing too dominant
+    // s1=0.30  s2=0.38  s3=0.46  s4=0.54
+    const S = [0, 0.30, 0.38, 0.46, 0.54]; // index = size 1-4
+
+    const PORTFOLIO = [
+      { label: 'Web Design',   glass: 0xffffff, c1: 0x00aacc, c2: 0xaadd00, r: S[3] },
+      { label: 'Interactive',  glass: 0xffffff, c1: 0xff5500, c2: 0x1155aa, r: S[2] },
+      { label: 'UX/UI',        glass: 0xffffff, c1: 0x8833dd, c2: 0xffcc00, r: S[4] },
+      { label: 'Branding',     glass: 0xffffff, c1: 0xff8800, c2: 0xcc3300, r: S[3] },
+      { label: 'Graphic',      glass: 0xffffff, c1: 0xcc0044, c2: 0xff6600, r: S[3] },
+      { label: 'Engineering',  glass: 0xffffff, c1: 0x0044cc, c2: 0x00ccee, r: S[2] },
+    ];
+    const SMALLS = [
+      { glass: 0xffffff, c1: 0xff3300, c2: 0xffaa00, r: S[2] },
+      { glass: 0xffffff, c1: 0x00cc88, c2: 0xffee00, r: S[1] },
+      { glass: 0xffffff, c1: 0x2200cc, c2: 0xee00ff, r: S[2] },
+      { glass: 0xffffff, c1: 0xff0088, c2: 0xff8800, r: S[1] },
+      { glass: 0xffffff, c1: 0xffcc00, c2: 0xff4400, r: S[2] },
+    ];
+
+    // ── BUILD MARBLE ──────────────────────────────────────────────
+    function buildMarble(def, idx, tex = null) {
+      const group = new THREE.Group();
+
+      // Outer glass shell — Phong specular, no clearcoat/transmission overhead
+      const outer = new THREE.Mesh(
+        new THREE.SphereGeometry(def.r, 32, 32),
+        new THREE.MeshPhongMaterial({
+          color:      0xffffff,
+          specular:   0xffffff,
+          shininess:  220,
+          transparent: true,
+          opacity:    0.28,
+          depthWrite: false,
+        })
+      );
+      group.add(outer);
+
+      // Swirl sphere — coloured backdrop for ALL marbles
+      const innerGroup = new THREE.Group();
+      const inner = new THREE.Mesh(
+        new THREE.SphereGeometry(def.r * 0.82, 28, 28),
+        new THREE.ShaderMaterial({
+          uniforms: {
+            uC1:   { value: new THREE.Color(def.c1) },
+            uC2:   { value: new THREE.Color(def.c2) },
+            uSeed: { value: idx * 2.618 },
+          },
+          vertexShader:   swirlVS,
+          fragmentShader: swirlFS,
+        })
+      );
+      innerGroup.add(inner);
+      group.add(innerGroup);
+
+      // Portfolio marbles: flat image plane sitting just inside the marble's front face.
+      // It is repositioned every frame toward the camera so:
+      //  - own swirl sphere (slightly behind it) doesn't occlude it
+      //  - a far marble's swirl sphere (opaque, writes depth) DOES occlude it correctly
+      let imagePlane = null;
+      if (tex) {
+        imagePlane = new THREE.Mesh(
+          new THREE.PlaneGeometry(def.r * 1.55, def.r * 1.55),
+          new THREE.MeshBasicMaterial({
+            map:        tex,
+            alphaMap:   spriteMask,
+            transparent: true,
+            opacity:    0.72,
+            color:      new THREE.Color(0.38, 0.38, 0.38),
+            depthWrite: false,
+            depthTest:  true,
+            side:       THREE.FrontSide,
+          })
+        );
+        group.add(imagePlane);
+      }
+
+      scene.add(group);
+      return {
+        group, innerGroup, outer, inner, imagePlane,
+        radius: def.r, isPortfolio: !!def.label,
+        label: def.label ?? '',
+        c1: def.c1, c2: def.c2,
+        pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+        scaleTarget: 1, scaleCurrent: 1, hovered: false, wasHovered: false,
+      };
+    }
+
+    const allMarbles = [
+      ...PORTFOLIO.map((d,i) => buildMarble(d, i, imgTex[d.label])),
+      ...SMALLS.map((d,i)    => buildMarble(d, i+6)),           // smalls keep the swirl
+    ];
+    const portfolioMarbles = allMarbles.filter(m => m.isPortfolio);
+
+    const BOUND_R = 3.0; // marble containment radius — also used by the robot hand below
+
+    // ── GIANT ROBOT HAND — cradles the marble cluster from below/behind ─
+    // Everything here is placed in spherical coords around the SAME origin
+    // the marbles orbit (radial gravity target), radius >= BOUND_R, so the
+    // hand can never clip through the marble swarm.
+    {
+      // Lower metalness so the metal actually catches diffuse light — a pure-metal
+      // PBR material renders almost black without a reflection environment map.
+      const bodyMat  = new THREE.MeshStandardMaterial({ color:0x565d70, metalness:0.4, roughness:0.5 });
+      const jointMat = new THREE.MeshStandardMaterial({ color:0x33374a, metalness:0.45, roughness:0.4 });
+      const accentBlu= new THREE.MeshStandardMaterial({ color:0x0a2a44, metalness:0.5,  roughness:0.4, emissive:0x2288ff, emissiveIntensity:1.6 });
+      const accentPnk= new THREE.MeshStandardMaterial({ color:0x40081f, metalness:0.5,  roughness:0.4, emissive:0xff2266, emissiveIntensity:1.3 });
+
+      const hand = new THREE.Group();
+      scene.add(hand);
+
+      // Dedicated lights so the hand reads clearly even where the marble lights don't reach
+      const handKey = new THREE.PointLight(0xffffff, 7, 26);
+      handKey.position.set(1, 3, 7);
+      hand.add(handKey);
+      const handFill = new THREE.PointLight(0x88aaff, 4, 22);
+      handFill.position.set(-4, -1, 3);
+      hand.add(handFill);
+      const handRim = new THREE.DirectionalLight(0xffe0c0, 1.6);
+      handRim.position.set(-2, 1, -6);
+      hand.add(handRim);
+
+      const R_PALM = BOUND_R + 0.15; // just outside the marble containment sphere
+
+      // Spherical → world position. theta: 0=+Y pole ... PI=-Y pole. phi around Y axis, phi=PI/2 faces camera (+Z).
+      const sph = (theta, phi, r) => new THREE.Vector3(
+        r*Math.sin(theta)*Math.cos(phi), r*Math.cos(theta), r*Math.sin(theta)*Math.sin(phi)
+      );
+
+      // Palm — shallow cap covering the underside of the sphere (bottom ~44° band), concave face up
+      const palm = new THREE.Mesh(
+        new THREE.SphereGeometry(R_PALM, 48, 24, 0, Math.PI*2, Math.PI*0.56, Math.PI*0.44),
+        bodyMat
+      );
+      palm.material = bodyMat.clone(); palm.material.side = THREE.DoubleSide;
+      hand.add(palm);
+
+      // Glowing rim right where fingers root, marking the "top" of the palm cup
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(R_PALM*Math.sin(Math.PI*0.56), 0.05, 8, 64), accentBlu);
+      rim.position.y = R_PALM*Math.cos(Math.PI*0.56);
+      rim.rotation.x = Math.PI/2;
+      hand.add(rim);
+
+      // Cylinder segment between two points, tapered radius r0→r1
+      function segment(p0, p1, r0, r1, mat) {
+        const dir = new THREE.Vector3().subVectors(p1, p0);
+        const len = dir.length();
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 12), mat);
+        mesh.position.copy(p0).addScaledVector(dir, 0.5);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
+        hand.add(mesh);
+        return mesh;
+      }
+      function joint(p, r, mat) {
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), mat);
+        mesh.position.copy(p);
+        hand.add(mesh);
+        return mesh;
+      }
+
+      // Fingers — root at the palm rim (theta=0.56π), sweep up over the back of the
+      // ball toward the pole (theta→0.2π), each at a fixed azimuth so it wraps the
+      // sphere like a hand cradling a basketball from below/behind. Front arc
+      // (phi ~ 20°..160°, facing the camera) is left open.
+      // phiCurl: azimuth (deg) each fingertip drifts toward, so tips lean inward/forward
+      // over the ball instead of standing as straight vertical rods.
+      const fingers = [
+        { phi: 205, phiCurl: 165, thetaTip: 0.27, baseW: 0.46 },
+        { phi: 250, phiCurl: 222, thetaTip: 0.23, baseW: 0.50 },
+        { phi: 300, phiCurl: 328, thetaTip: 0.23, baseW: 0.50 },
+        { phi: 345, phiCurl: 388, thetaTip: 0.28, baseW: 0.44 },
+      ];
+      for (const f of fingers) {
+        const phi0 = f.phi * Math.PI/180, phi1 = f.phiCurl * Math.PI/180;
+        const thetas = [0.56, 0.44, 0.34, f.thetaTip].map(t => t*Math.PI);
+        const radii   = [R_PALM, R_PALM+0.20, R_PALM+0.26, R_PALM+0.16];
+        const widths  = [f.baseW, f.baseW*0.80, f.baseW*0.62, f.baseW*0.42];
+        const pts = thetas.map((th,i) => {
+          const t = i/(thetas.length-1);
+          const phi = phi0 + (phi1-phi0)*t*t; // curl accelerates toward the tip
+          return sph(th, phi, radii[i]);
+        });
+        for (let i=0;i<pts.length-1;i++) segment(pts[i], pts[i+1], widths[i], widths[i+1], bodyMat);
+        joint(pts[0], widths[0]*1.25, jointMat); // knuckle at the palm rim
+        for (let i=1;i<pts.length-1;i++) joint(pts[i], widths[i]*1.35, jointMat);
+        joint(pts[pts.length-1], widths[widths.length-1]*1.1, accentPnk); // fingertip glow
+      }
+
+      // Thumb — shorter, rooted to one side, curls in toward the front to "hold" the ball
+      {
+        const phi0 = 168 * Math.PI/180, phi1 = 128 * Math.PI/180;
+        const thetas = [0.62, 0.50, 0.40].map(t => t*Math.PI);
+        const radii  = [R_PALM, R_PALM+0.16, R_PALM+0.14];
+        const widths = [0.5, 0.36, 0.24];
+        const pts = thetas.map((th,i) => {
+          const t = i/(thetas.length-1);
+          return sph(th, phi0 + (phi1-phi0)*t*t, radii[i]);
+        });
+        for (let i=0;i<pts.length-1;i++) segment(pts[i], pts[i+1], widths[i], widths[i+1], bodyMat);
+        joint(pts[0], widths[0]*1.25, jointMat);
+        joint(pts[1], widths[1]*1.3, jointMat);
+        joint(pts[2], widths[2]*1.1, accentPnk);
+      }
+
+      // Wrist + forearm, descending off-screen to sell giant scale
+      const southPole = sph(Math.PI, 0, R_PALM);
+      const wristJoint = southPole.clone().add(new THREE.Vector3(0, -0.1, -0.3));
+      joint(wristJoint, R_PALM*0.62, jointMat);
+      const armPlate = wristJoint.clone().add(new THREE.Vector3(0, -0.9, -0.15));
+      segment(wristJoint, armPlate, R_PALM*0.58, R_PALM*0.6, accentBlu);
+      const armEnd = wristJoint.clone().add(new THREE.Vector3(0, -6.5, -1.1));
+      segment(armPlate, armEnd, R_PALM*0.6, R_PALM*0.72, bodyMat);
+      const armEnd2 = armEnd.clone().add(new THREE.Vector3(0, -0.35, -0.05));
+      segment(armEnd, armEnd2, R_PALM*0.72, R_PALM*0.76, accentPnk);
+    }
+
+    // ── INIT POSITIONS ────────────────────────────────────────────
+    ;(function() {
+      const placed = [];
+      for (const m of allMarbles) {
+        let p, tries=0;
+        do {
+          const r=1.0+Math.random()*1.4, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+          p = new THREE.Vector3(r*Math.sin(ph)*Math.cos(th), r*Math.sin(ph)*Math.sin(th), r*Math.cos(ph));
+          tries++;
+        } while (tries<120 && placed.some(q=>p.distanceTo(q.pos)<m.radius+q.radius+0.08));
+        m.pos.copy(p);
+        m.vel.set((Math.random()-.5)*.4,(Math.random()-.5)*.4,(Math.random()-.5)*.4);
+        placed.push(m);
+      }
+    })();
+
+    const ui = document.getElementById('ui'); // kept for potential future use
+
+    // ── AUDIO ─────────────────────────────────────────────────────
+    let audioCtx = null;
+    let soundEnabled = true;
+
+    // Sound toggle button
+    const soundBtn = document.getElementById('sound-btn');
+    soundBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      soundEnabled = !soundEnabled;
+      soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
+      soundBtn.classList.toggle('muted', !soundEnabled);
+    });
+
+    window.addEventListener('mousemove', () => {
+      if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      if (audioCtx.state==='suspended') audioCtx.resume();
+    }, { once: true });
+
+    function playGlassClink() {
+      if (!audioCtx || !soundEnabled) return;
+      const now=audioCtx.currentTime, fund=1900+Math.random()*1500;
+      const master=audioCtx.createGain(); master.gain.value=0.11; master.connect(audioCtx.destination);
+      [{mult:1.00,amp:.50,dec:.45},{mult:2.76,amp:.25,dec:.30},
+       {mult:5.40,amp:.12,dec:.20},{mult:8.93,amp:.06,dec:.14}]
+      .forEach(({mult,amp,dec})=>{
+        const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+        o.type='sine'; o.frequency.value=fund*mult;
+        g.gain.setValueAtTime(0,now); g.gain.linearRampToValueAtTime(amp,now+0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001,now+dec);
+        o.connect(g); g.connect(master); o.start(now); o.stop(now+dec+0.05);
+      });
+      const bL=Math.floor(audioCtx.sampleRate*0.018),buf=audioCtx.createBuffer(1,bL,audioCtx.sampleRate);
+      const data=buf.getChannelData(0); for(let i=0;i<bL;i++) data[i]=Math.random()*2-1;
+      const ns=audioCtx.createBufferSource(); ns.buffer=buf;
+      const fl=audioCtx.createBiquadFilter(); fl.type='bandpass'; fl.frequency.value=fund*1.4; fl.Q.value=3;
+      const ng=audioCtx.createGain(); ng.gain.setValueAtTime(0.35,now); ng.gain.exponentialRampToValueAtTime(0.0001,now+0.018);
+      ns.connect(fl); fl.connect(ng); ng.connect(master); ns.start(now);
+    }
+
+    // ── PHYSICS ───────────────────────────────────────────────────
+    const GRAVITY=7.0, DRAG=4.5, RESTITUTION=0.20, SUBSTEPS=2;
+
+    function physicsStep(dt) {
+      const sub=dt/SUBSTEPS;
+      for (let s=0; s<SUBSTEPS; s++) {
+        for (const m of allMarbles) {
+          const len=m.pos.length();
+          if (len>0.001) m.vel.addScaledVector(m.pos,-GRAVITY*sub/len);
+          const maxR=BOUND_R-m.radius;
+          if (len>maxR) m.vel.addScaledVector(m.pos,-(len-maxR)*14*sub/len);
+          m.vel.multiplyScalar(1-DRAG*sub);
+          const spd=m.vel.length(); if(spd>9) m.vel.multiplyScalar(9/spd);
+        }
+        for (const m of allMarbles) m.pos.addScaledVector(m.vel,sub);
+        for (let iter=0; iter<2; iter++) { // was 3 collision iterations
+          for (let i=0;i<allMarbles.length;i++) {
+            for (let j=i+1;j<allMarbles.length;j++) {
+              const a=allMarbles[i],b=allMarbles[j];
+              const dx=a.pos.x-b.pos.x,dy=a.pos.y-b.pos.y,dz=a.pos.z-b.pos.z;
+              const d2=dx*dx+dy*dy+dz*dz, min=a.radius+b.radius;
+              if (d2<min*min&&d2>1e-6) {
+                const d=Math.sqrt(d2),inv=1/d,pen=(min-d)*0.5;
+                const nx=dx*inv,ny=dy*inv,nz=dz*inv;
+                a.pos.x+=nx*pen;a.pos.y+=ny*pen;a.pos.z+=nz*pen;
+                b.pos.x-=nx*pen;b.pos.y-=ny*pen;b.pos.z-=nz*pen;
+                const rvn=(a.vel.x-b.vel.x)*nx+(a.vel.y-b.vel.y)*ny+(a.vel.z-b.vel.z)*nz;
+                if(rvn<0){const imp=-(1+RESTITUTION)*rvn*0.5;
+                  a.vel.x+=imp*nx;a.vel.y+=imp*ny;a.vel.z+=imp*nz;
+                  b.vel.x-=imp*nx;b.vel.y-=imp*ny;b.vel.z-=imp*nz;}
+              }
+            }
+          }
+        }
+      }
+      for (const m of allMarbles) m.group.position.copy(m.pos);
+    }
+
+    // ── CURSOR WORLD POSITION (cheap — project onto near sphere) ──
+    const _cursorRay = new THREE.Raycaster();
+    const cursorWorld = new THREE.Vector3();
+    let   cursorOnScreen = false;
+
+    function updateCursorWorld() {
+      cursorOnScreen = mouse.x > -1.9 && mouse.x < 1.9 && mouse.y > -1.9 && mouse.y < 1.9;
+      if (cursorOnScreen) {
+        _cursorRay.setFromCamera(mouse, camera);
+        // Project onto a sphere of radius 3.5 — gives a stable world-space cursor position
+        const ro = _cursorRay.ray.origin, rd = _cursorRay.ray.direction;
+        const b = 2*ro.dot(rd), c = ro.dot(ro) - 12.25, disc = b*b - 4*c;
+        _cursorRay.ray.at(disc >= 0 ? Math.max((-b - Math.sqrt(disc))/2, 0.5) : 4, cursorWorld);
+      }
+    }
+
+    // ── RGB BEAM TRAIL — ribbon update ───────────────────────────
+    function updateTrail() {
+      if (!cursorOnScreen) {
+        ribColArr.fill(0); // black = invisible with additive blending
+        ribGeo.attributes.color.needsUpdate = true;
+        trailSeeded = false;
+        return;
+      }
+
+      // First appearance: seed all positions at cursor so no ghost tail from origin
+      if (!trailSeeded) {
+        for (let i = 0; i < TRAIL_N; i++) {
+          trailPosArr[i*3]   = cursorWorld.x;
+          trailPosArr[i*3+1] = cursorWorld.y;
+          trailPosArr[i*3+2] = cursorWorld.z;
+        }
+        trailSeeded = true;
+      }
+
+      // Shift ring-buffer: oldest at 0, newest at TRAIL_N-1
+      for (let i = 0; i < TRAIL_N - 1; i++) {
+        trailPosArr[i*3]   = trailPosArr[(i+1)*3];
+        trailPosArr[i*3+1] = trailPosArr[(i+1)*3+1];
+        trailPosArr[i*3+2] = trailPosArr[(i+1)*3+2];
+      }
+      const h = (TRAIL_N - 1) * 3;
+      trailPosArr[h]   = cursorWorld.x;
+      trailPosArr[h+1] = cursorWorld.y;
+      trailPosArr[h+2] = cursorWorld.z;
+
+      // Camera axes — ribbon edges are always perpendicular to the view
+      camera.getWorldDirection(_camFwd);
+      _camRt.setFromMatrixColumn(camera.matrixWorld, 0);
+
+      for (let i = 0; i < TRAIL_N; i++) {
+        const t  = i / (TRAIL_N - 1);  // 0 = tail, 1 = head
+        const px = trailPosArr[i*3], py = trailPosArr[i*3+1], pz = trailPosArr[i*3+2];
+
+        // Segment direction (central difference for smooth orientation)
+        const n = Math.min(i + 1, TRAIL_N - 1) * 3;
+        const p = Math.max(i - 1, 0)           * 3;
+        _seg.set(trailPosArr[n]-trailPosArr[p], trailPosArr[n+1]-trailPosArr[p+1], trailPosArr[n+2]-trailPosArr[p+2]);
+        if (_seg.lengthSq() < 1e-8) _seg.copy(_camRt); // stationary fallback
+
+        // Ribbon edge direction: perp to both trail direction and camera forward
+        _perp.crossVectors(_seg, _camFwd).normalize();
+        if (_perp.lengthSq() < 0.001) _perp.copy(_camRt);
+
+        const halfW = t * t * BEAM_HW; // taper width: 0 at tail, BEAM_HW at head
+        const vi = i * 6;
+        ribPosArr[vi]   = px - _perp.x * halfW;  ribPosArr[vi+1] = py - _perp.y * halfW;  ribPosArr[vi+2] = pz - _perp.z * halfW;
+        ribPosArr[vi+3] = px + _perp.x * halfW;  ribPosArr[vi+4] = py + _perp.y * halfW;  ribPosArr[vi+5] = pz + _perp.z * halfW;
+
+        // Rainbow colour; multiply by t² to fade brightness toward tail
+        const hue    = ((time * 0.35) + t * 0.6) % 1.0;
+        const bright = t * t;
+        _hslCol.setHSL(hue, 1.0, 0.55);
+        const r = _hslCol.r * bright, g = _hslCol.g * bright, b = _hslCol.b * bright;
+        ribColArr[vi]   = r; ribColArr[vi+1] = g; ribColArr[vi+2] = b;
+        ribColArr[vi+3] = r; ribColArr[vi+4] = g; ribColArr[vi+5] = b;
+      }
+
+      ribGeo.attributes.position.needsUpdate = true;
+      ribGeo.attributes.color.needsUpdate    = true;
+    }
+
+    // ── MOUSE & ORBIT ─────────────────────────────────────────────
+    const mouse = new THREE.Vector2(-99, -99);
+    window.addEventListener('mousemove', e => {
+      mouse.x=(e.clientX/innerWidth)*2-1;
+      mouse.y=-(e.clientY/innerHeight)*2+1;
+    });
+
+    const cam = { theta:0, phi:0.2, radius:10.5, dragging:false, lastX:0, lastY:0,
+                  velTheta:0, velPhi:0, autoRotate:true, resumeTimer:null };
+    const canvas = renderer.domElement;
+    canvas.addEventListener('mousedown', e => {
+      e.preventDefault(); cam.dragging=true; cam.autoRotate=false;
+      cam.velTheta=0; cam.velPhi=0; cam.lastX=e.clientX; cam.lastY=e.clientY;
+      canvas.classList.add('dragging'); clearTimeout(cam.resumeTimer);
+    });
+    window.addEventListener('mousemove', e => {
+      if (!cam.dragging) return;
+      const dx=e.clientX-cam.lastX, dy=e.clientY-cam.lastY;
+      cam.velTheta=-dx*0.006; cam.velPhi=dy*0.004;
+      cam.theta+=cam.velTheta; cam.phi+=cam.velPhi;
+      cam.phi=Math.max(-1.3,Math.min(1.3,cam.phi));
+      cam.lastX=e.clientX; cam.lastY=e.clientY;
+    });
+    window.addEventListener('mouseup', () => {
+      if (!cam.dragging) return;
+      cam.dragging=false; canvas.classList.remove('dragging');
+      cam.resumeTimer=setTimeout(()=>{ cam.autoRotate=true; },2500);
+    });
+    canvas.addEventListener('touchstart', e=>{
+      e.preventDefault(); const t=e.touches[0];
+      cam.dragging=true;cam.autoRotate=false;cam.velTheta=0;cam.velPhi=0;
+      cam.lastX=t.clientX;cam.lastY=t.clientY;clearTimeout(cam.resumeTimer);
+    },{passive:false});
+    window.addEventListener('touchmove', e=>{
+      if(!cam.dragging)return; const t=e.touches[0];
+      const dx=t.clientX-cam.lastX,dy=t.clientY-cam.lastY;
+      cam.velTheta=-dx*0.006;cam.velPhi=dy*0.004;
+      cam.theta+=cam.velTheta;cam.phi+=cam.velPhi;
+      cam.phi=Math.max(-1.3,Math.min(1.3,cam.phi));
+      cam.lastX=t.clientX;cam.lastY=t.clientY;
+    },{passive:true});
+    window.addEventListener('touchend',()=>{
+      cam.dragging=false;cam.resumeTimer=setTimeout(()=>{cam.autoRotate=true;},2500);
+    });
+
+    // ── HOVER RAYCASTER ───────────────────────────────────────────
+    const raycaster = new THREE.Raycaster();
+    const _v     = new THREE.Vector3();
+    const _toCam = new THREE.Vector3();
+    // Cache to avoid allocating a new array every frame
+    const outerMeshes = allMarbles.map(m => m.outer);
+
+    // ── MAIN LOOP — capped at 24 fps ──────────────────────────────
+    const FRAME_MS = 1000 / 24;
+    let prevFrameTime = 0;
+    let time = 0;
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      if (now - prevFrameTime < FRAME_MS) return;
+      const dt = Math.min((now - prevFrameTime) / 1000, 0.05);
+      prevFrameTime = now;
+      time += dt;
+
+      physicsStep(dt);
+
+      // Slowly rotate swirl backdrops on all marbles
+      for (const m of allMarbles) {
+        m.innerGroup.rotation.y += dt * 0.05;
+      }
+
+      // Hover — reuse cached array, no allocation
+      raycaster.setFromCamera(mouse, camera);
+      const hitObj = cam.dragging
+        ? null
+        : raycaster.intersectObjects(outerMeshes)[0]?.object ?? null;
+
+      for (const m of allMarbles) {
+        m.hovered = m.outer === hitObj;
+        if (m.hovered && !m.wasHovered) {
+          playGlassClink();
+          const dir = m.pos.clone().normalize();
+          if (dir.lengthSq() < 0.001) dir.set(0,1,0);
+          m.vel.addScaledVector(dir, 2.0);
+        }
+        m.wasHovered = m.hovered;
+        m.scaleTarget  = m.hovered ? 1.14 : 1.0;
+        m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
+        m.group.scale.setScalar(m.scaleCurrent);
+      }
+
+      // Cursor world position + RGB trail
+      updateCursorWorld();
+      updateTrail();
+
+      // Camera
+      if (cam.autoRotate) {
+        cam.theta+=dt*0.045; cam.phi=0.28*Math.sin(time*0.17);
+      } else if (!cam.dragging) {
+        cam.velTheta*=0.88; cam.velPhi*=0.88;
+        cam.theta+=cam.velTheta; cam.phi+=cam.velPhi;
+        cam.phi=Math.max(-1.3,Math.min(1.3,cam.phi));
+      }
+      camera.position.x=cam.radius*Math.cos(cam.phi)*Math.sin(cam.theta);
+      camera.position.y=cam.radius*Math.sin(cam.phi);
+      camera.position.z=cam.radius*Math.cos(cam.phi)*Math.cos(cam.theta);
+      camera.lookAt(0,0.3,0);
+
+      // Lights are fixed — no per-frame orbit math
+
+      // Reposition each image plane just inside the marble's front face toward camera.
+      // Own swirl sphere (slightly behind it) passes depth test.
+      // A farther marble's opaque swirl sphere correctly blocks it.
+      for (const m of portfolioMarbles) {
+        if (!m.imagePlane) continue;
+        _toCam.subVectors(camera.position, m.pos).normalize();
+        m.imagePlane.position.copy(_toCam).multiplyScalar(m.radius * 0.84);
+        m.imagePlane.quaternion.copy(camera.quaternion);
+      }
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+
+    window.addEventListener('resize', ()=>{
+      camera.aspect=innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth,innerHeight);
+    });
+  </script>
+</body>
+</html>
