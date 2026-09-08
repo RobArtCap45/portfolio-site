@@ -1046,7 +1046,6 @@
     let grabDepth      = 0;
     let wasPinching     = false;
     const handNDC     = new THREE.Vector2();
-    const _grabTarget = new THREE.Vector3();
 
     function detectHandLoop() {
       if (!handTrackingEnabled) return;
@@ -1123,48 +1122,95 @@
     });
 
     const HAND_HOVER_DEPTH = 3.2; // distance in front of camera the rig floats at when not holding anything
+    const SWIPE_RADIUS     = 0.9;  // influence radius around the hand (added to each marble's own radius)
+    const SWIPE_MIN_SPEED  = 1.2;  // world units/sec — ignore a barely-moving open hand
+    const SWIPE_MAX_SPEED  = 14;   // hand speed is clamped here before scaling the kick
+    const SWIPE_STRENGTH   = 0.9;
+    const _prevHandAnchor  = new THREE.Vector3();
+    const _handVel         = new THREE.Vector3();
+    const _swipeDir        = new THREE.Vector3();
+    let handAnchorValid    = false;
+    let wasGrabbingForSwipe = false; // a grab release re-anchors depth — skip one frame so that jump isn't read as a swipe
 
     function updateHandGrab(dt) {
       if (!handTrackingEnabled || !handState.visible || !handState.worldLandmarks) {
         grabbedMarble = null;
         wasPinching = false;
+        handAnchorValid = false;
         handRig.visible = false;
         return;
       }
 
       handNDC.set(1 - 2 * handState.x, 1 - 2 * handState.y); // mirror for natural "reach out and grab" feel
+      raycaster.setFromCamera(handNDC, camera);
 
       if (handState.pinching && !wasPinching && phase === 'idle') {
-        raycaster.setFromCamera(handNDC, camera);
         const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
         const m = allMarbles.find(mm => mm.outer === hit);
         if (m) { grabbedMarble = m; grabDepth = camera.position.distanceTo(m.pos); }
       }
 
+      const depth = grabbedMarble ? grabDepth : HAND_HOVER_DEPTH;
+      raycaster.ray.at(depth, _handAnchor);
+
       if (handState.pinching && grabbedMarble) {
-        raycaster.setFromCamera(handNDC, camera);
-        raycaster.ray.at(grabDepth, _grabTarget);
-        if (dt > 0) grabbedMarble.vel.copy(_grabTarget).sub(grabbedMarble.pos).multiplyScalar(1 / dt);
-        grabbedMarble.pos.copy(_grabTarget);
-        grabbedMarble.group.position.copy(_grabTarget);
+        if (dt > 0) grabbedMarble.vel.copy(_handAnchor).sub(grabbedMarble.pos).multiplyScalar(1 / dt);
+        grabbedMarble.pos.copy(_handAnchor);
+        grabbedMarble.group.position.copy(_handAnchor);
       }
 
       if (!handState.pinching) grabbedMarble = null; // release — physics takes over with the last-held velocity
       wasPinching = handState.pinching;
 
-      updateHandRig(grabbedMarble ? grabDepth : HAND_HOVER_DEPTH);
+      updateHandSwipe(dt);
+      updateHandRig();
+    }
+
+    // Open-hand swipe: when the hand isn't pinching/holding anything, a fast
+    // pass through the cluster kicks every marble it comes near, scaled by
+    // how close and how fast — same feel as physically swatting through a
+    // pile of marbles. Uses the same anchor point the rig is drawn at.
+    function updateHandSwipe(dt) {
+      const isGrabbingNow = !!grabbedMarble;
+      const depthJumped = isGrabbingNow !== wasGrabbingForSwipe;
+      wasGrabbingForSwipe = isGrabbingNow;
+
+      if (!handAnchorValid || depthJumped) {
+        _prevHandAnchor.copy(_handAnchor);
+        handAnchorValid = true;
+        return;
+      }
+
+      _handVel.copy(_handAnchor).sub(_prevHandAnchor).multiplyScalar(dt > 0 ? 1 / dt : 0);
+      _prevHandAnchor.copy(_handAnchor);
+
+      if (handState.pinching || grabbedMarble || phase !== 'idle') return;
+      const speed = _handVel.length();
+      if (speed < SWIPE_MIN_SPEED) return;
+
+      const clampedSpeed = Math.min(speed, SWIPE_MAX_SPEED);
+      _swipeDir.copy(_handVel).multiplyScalar(1 / speed);
+      let maxKick = 0;
+      for (const m of allMarbles) {
+        if (m === active || m === grabbedMarble) continue;
+        const dist = m.pos.distanceTo(_handAnchor);
+        const infl = m.radius + SWIPE_RADIUS;
+        if (dist >= infl) continue;
+        const falloff = 1 - dist / infl;
+        const kick = falloff * SWIPE_STRENGTH * clampedSpeed;
+        m.vel.addScaledVector(_swipeDir, kick);
+        if (kick > maxKick) maxKick = kick;
+      }
+      if (maxKick > 1.5) playCollisionClink(Math.min(maxKick / 9, 1));
     }
 
     // Rebuilds the 3-D hand rig from this frame's landmarks: anchors the
-    // thumb/index pinch point at a fixed depth in front of the camera, then
-    // places every other joint relative to it along the camera's own
-    // right/up/forward axes so the rig always faces the viewer.
-    function updateHandRig(depth) {
+    // thumb/index pinch point at the same depth the grab/swipe logic just
+    // used, then places every other joint relative to it along the
+    // camera's own right/up/forward axes so the rig always faces the viewer.
+    function updateHandRig() {
       const wl = handState.worldLandmarks;
       handRig.visible = true;
-
-      raycaster.setFromCamera(handNDC, camera);
-      raycaster.ray.at(depth, _handAnchor);
 
       _handRight.setFromMatrixColumn(camera.matrixWorld, 0);
       _handUp.setFromMatrixColumn(camera.matrixWorld, 1);
