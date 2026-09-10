@@ -265,7 +265,7 @@
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 1.0)); // hard cap at 1× — biggest single GPU win
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.35;
+    renderer.toneMappingExposure = 0.85; // was 1.35, tuned for the old white theme — way too hot against black
     document.body.insertBefore(renderer.domElement, document.getElementById('ui'));
 
     const scene  = new THREE.Scene();
@@ -441,6 +441,7 @@
     const texLoader = new THREE.TextureLoader();
     function loadTex(path, pixelated = false) {
       const t = texLoader.load(path);
+      t.colorSpace = THREE.SRGBColorSpace; // these are sRGB source images — without this they decode as linear and wash out
       t.minFilter = pixelated ? THREE.NearestFilter : THREE.LinearMipmapLinearFilter;
       t.magFilter = pixelated ? THREE.NearestFilter : THREE.LinearFilter;
       return t;
@@ -461,12 +462,14 @@
 
     // One image per portfolio marble — assigned by visual fit
     const imgTex = {
-      'Web Design':  loadTex('MonkeyGorillanation.gif', true),       // pixelated web artifact → keep it crunchy
-      'Interactive': loadTex('cat bird.jpg'),                         // warm fantasy painting
-      'UX/UI':       loadTex('Creativity.png'),                       // chaotic vibrant illustration
-      'Branding':    loadTex('treasure.jpg'),                         // rich illustrated world
-      'Graphic':     loadTex('c00e9d8eaa4182dec7504f124be642f8.jpg'), // bold comic art
-      'Engineering': loadTex('skeleton.png'),                         // dark + structured
+      'Web Design':      loadTex('MonkeyGorillanation.gif', true),       // pixelated web artifact → keep it crunchy
+      'Interactive':     loadTex('cat bird.jpg'),                         // warm fantasy painting
+      'UX/UI':           loadTex('Creativity.png'),                       // chaotic vibrant illustration
+      'Branding':        loadTex('treasure.jpg'),                         // rich illustrated world
+      'Graphic':         loadTex('c00e9d8eaa4182dec7504f124be642f8.jpg'), // bold comic art
+      'Engineering':     loadTex('skeleton.png'),                         // dark + structured
+      'Hanafuda Cards':  loadTex('Darumaoslo.png'),                       // single red daruma doll, 4x export
+      'Pizza Wizard':    loadTex('PizaaWizard.png'),                      // bold-outline character illustration
     };
 
     // ── MARBLE DEFINITIONS ────────────────────────────────────────
@@ -475,12 +478,14 @@
     const S = [0, 0.42, 0.53, 0.64, 0.75]; // index = size 1-4
 
     const PORTFOLIO = [
-      { label: 'Web Design',   glass: 0xffffff, c1: 0x00aacc, c2: 0xaadd00, r: S[3] },
-      { label: 'Interactive',  glass: 0xffffff, c1: 0xff5500, c2: 0x1155aa, r: S[2] },
-      { label: 'UX/UI',        glass: 0xffffff, c1: 0x8833dd, c2: 0xffcc00, r: S[4] },
-      { label: 'Branding',     glass: 0xffffff, c1: 0xff8800, c2: 0xcc3300, r: S[3] },
-      { label: 'Graphic',      glass: 0xffffff, c1: 0xcc0044, c2: 0xff6600, r: S[3] },
-      { label: 'Engineering',  glass: 0xffffff, c1: 0x0044cc, c2: 0x00ccee, r: S[2] },
+      { label: 'Web Design',      glass: 0xffffff, c1: 0x00aacc, c2: 0xaadd00, r: S[3] },
+      { label: 'Interactive',     glass: 0xffffff, c1: 0xff5500, c2: 0x1155aa, r: S[2] },
+      { label: 'UX/UI',           glass: 0xffffff, c1: 0x8833dd, c2: 0xffcc00, r: S[4] },
+      { label: 'Branding',        glass: 0xffffff, c1: 0xff8800, c2: 0xcc3300, r: S[3] },
+      { label: 'Graphic',         glass: 0xffffff, c1: 0xcc0044, c2: 0xff6600, r: S[3] },
+      { label: 'Engineering',     glass: 0xffffff, c1: 0x0044cc, c2: 0x00ccee, r: S[2] },
+      { label: 'Hanafuda Cards',  glass: 0xffffff, c1: 0xe8214f, c2: 0xffc94d, r: S[3] },
+      { label: 'Pizza Wizard',    glass: 0xffffff, c1: 0xd82323, c2: 0xf5a623, r: S[3] },
     ];
     const SMALLS = [
       { glass: 0xffffff, c1: 0xff3300, c2: 0xffaa00, r: S[2] },
@@ -503,11 +508,11 @@
           metalness:   0,
           roughness:   0.05,
           transmission: 1,
-          thickness:   def.r * 1.6,
+          thickness:   def.r * 0.6,
           ior:         1.5,
-          clearcoat:   0.4,
+          clearcoat:   0.15,
           clearcoatRoughness: 0.12,
-          envMapIntensity: 1.4,
+          envMapIntensity: 0.8,
           transparent: true,
           opacity:     1,
           depthWrite:  false,
@@ -544,8 +549,8 @@
             map:        tex,
             alphaMap:   spriteMask,
             transparent: true,
-            opacity:    0.72,
-            color:      new THREE.Color(0.38, 0.38, 0.38),
+            opacity:    1,
+            color:      new THREE.Color(1, 1, 1),
             depthWrite: false,
             depthTest:  true,
             side:       THREE.FrontSide,
@@ -656,12 +661,15 @@
     }
 
     // ── PHYSICS ───────────────────────────────────────────────────
-    const GRAVITY=7.0, DRAG=4.5, RESTITUTION=0.20, SUBSTEPS=2, BOUND_R=4.2;
+    // SUBSTEPS=1 and a single collision pass are enough at 60fps — each frame's
+    // dt is already small, so the extra subdivision 24fps needed for stability
+    // isn't necessary here, which keeps the per-second physics cost from
+    // scaling up 2.5× along with the frame rate.
+    const GRAVITY=7.0, DRAG=4.5, RESTITUTION=0.20, SUBSTEPS=1, BOUND_R=4.2;
     const COLLISION_SOUND_MIN = 0.7; // ignore gentle resting-pile jitter, only "real" hits make noise
 
     function physicsStep(dt) {
       const sub=dt/SUBSTEPS;
-      const collided = new Set(); // at most one clink per pair per tick, however many substeps/iters re-detect it
       for (let s=0; s<SUBSTEPS; s++) {
         for (const m of allMarbles) {
           if (m === active || m === grabbedMarble) continue; // owned by reveal transition or hand-grab
@@ -673,28 +681,24 @@
           const spd=m.vel.length(); if(spd>9) m.vel.multiplyScalar(9/spd);
         }
         for (const m of allMarbles) { if (m !== active && m !== grabbedMarble) m.pos.addScaledVector(m.vel,sub); }
-        for (let iter=0; iter<2; iter++) { // was 3 collision iterations
-          for (let i=0;i<allMarbles.length;i++) {
-            for (let j=i+1;j<allMarbles.length;j++) {
-              const a=allMarbles[i],b=allMarbles[j];
-              if (a === active || b === active) continue;
-              const dx=a.pos.x-b.pos.x,dy=a.pos.y-b.pos.y,dz=a.pos.z-b.pos.z;
-              const d2=dx*dx+dy*dy+dz*dz, min=a.radius+b.radius;
-              if (d2<min*min&&d2>1e-6) {
-                const d=Math.sqrt(d2),inv=1/d,pen=(min-d)*0.5;
-                const nx=dx*inv,ny=dy*inv,nz=dz*inv;
-                a.pos.x+=nx*pen;a.pos.y+=ny*pen;a.pos.z+=nz*pen;
-                b.pos.x-=nx*pen;b.pos.y-=ny*pen;b.pos.z-=nz*pen;
-                const rvn=(a.vel.x-b.vel.x)*nx+(a.vel.y-b.vel.y)*ny+(a.vel.z-b.vel.z)*nz;
-                if(rvn<0){const imp=-(1+RESTITUTION)*rvn*0.5;
-                  a.vel.x+=imp*nx;a.vel.y+=imp*ny;a.vel.z+=imp*nz;
-                  b.vel.x-=imp*nx;b.vel.y-=imp*ny;b.vel.z-=imp*nz;
-                  const pairKey = i*allMarbles.length+j;
-                  if (-rvn > COLLISION_SOUND_MIN && !collided.has(pairKey)) {
-                    collided.add(pairKey);
-                    playCollisionClink(Math.min(-rvn / 5, 1));
-                  }
-                }
+        // One collision pass per tick (was 2 at 24fps) — at 60fps each pair is
+        // already re-checked far more often per second, so it stays stable.
+        for (let i=0;i<allMarbles.length;i++) {
+          for (let j=i+1;j<allMarbles.length;j++) {
+            const a=allMarbles[i],b=allMarbles[j];
+            if (a === active || b === active) continue;
+            const dx=a.pos.x-b.pos.x,dy=a.pos.y-b.pos.y,dz=a.pos.z-b.pos.z;
+            const d2=dx*dx+dy*dy+dz*dz, min=a.radius+b.radius;
+            if (d2<min*min&&d2>1e-6) {
+              const d=Math.sqrt(d2),inv=1/d,pen=(min-d)*0.5;
+              const nx=dx*inv,ny=dy*inv,nz=dz*inv;
+              a.pos.x+=nx*pen;a.pos.y+=ny*pen;a.pos.z+=nz*pen;
+              b.pos.x-=nx*pen;b.pos.y-=ny*pen;b.pos.z-=nz*pen;
+              const rvn=(a.vel.x-b.vel.x)*nx+(a.vel.y-b.vel.y)*ny+(a.vel.z-b.vel.z)*nz;
+              if(rvn<0){const imp=-(1+RESTITUTION)*rvn*0.5;
+                a.vel.x+=imp*nx;a.vel.y+=imp*ny;a.vel.z+=imp*nz;
+                b.vel.x-=imp*nx;b.vel.y-=imp*ny;b.vel.z-=imp*nz;
+                if (-rvn > COLLISION_SOUND_MIN) playCollisionClink(Math.min(-rvn / 5, 1));
               }
             }
           }
@@ -847,7 +851,18 @@
     // scrolled into view. Closing reverses all of it and hands the
     // marble back to the physics sim, which pulls it back into the pile.
     const PLACEHOLDER_DESC = "This is a placeholder case study. Swap this text for the real project write-up — what the project was, the problem it solved, your role, and the outcome — plus a link to the live project if there is one.";
-    const CASE_COPY = {}; // e.g. CASE_COPY['Web Design'] = { desc: '...' } to override the placeholder
+    // Per-marble overrides: { desc, tag? } — tag replaces the default
+    // "placeholder — real copy pending" note (e.g. for a WIP entry); omit
+    // tag once the project is finished and the note isn't needed at all.
+    const CASE_COPY = {
+      'Hanafuda Cards': {
+        desc: "A hanafuda-inspired reimagining of the standard 52-card deck. Each suit is re-skinned around a Japanese floral motif — cherry blossom, plum blossom, fern — in place of the usual clubs and spades, and every face card pairs two daruma dolls instead of a royal portrait. Rank markers run bilingual, Western digits alongside kanji, so the whole deck stays legible while reading as unmistakably hanafuda. Full 54-card set: illustration, suit/color system, and print-ready layout.",
+        tag: 'wip — remaining suits + box design in progress',
+      },
+      'Pizza Wizard': {
+        desc: "A self-serve ordering kiosk designed end to end for Pizza Wizard, a pizza shop whose mascot the entire flow is built around — down to the fine print about flying trays if you overload the cart. Research started at a real installed kiosk (Shake Shack, benchmarked against Nielsen's 10 heuristics), then moved through user flows, wireframes, and full UI: guest checkout vs. phone-verified loyalty accounts, a build-your-own vs. pre-built ordering split, an idle-timeout countdown, and checkout upsells styled as \u201cWizard Specials.\u201d A 4-month solo UX project, research through final screens.",
+      },
+    };
 
     const LAUNCH_S = 0.62, BREAK_S = 0.30, CLOSE_S = 0.55;
     const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
@@ -864,10 +879,86 @@
     burstMesh.visible = false;
     scene.add(burstMesh);
 
+    // ── GLASS SHATTER — the shell breaks into real falling shards ──────
+    // A handful of irregular triangle shapes, generated once and reused
+    // (scaled per spawn) across every marble that ever breaks open.
+    const SHARD_SHAPES = Array.from({ length: 7 }, () => {
+      const g = new THREE.BufferGeometry();
+      const ang = [0, 1.6 + Math.random() * 1.2, 3.6 + Math.random() * 1.6];
+      const pos = new Float32Array(9);
+      for (let i = 0; i < 3; i++) {
+        const r = 0.55 + Math.random() * 0.45;
+        pos[i*3] = Math.cos(ang[i]) * r; pos[i*3+1] = Math.sin(ang[i]) * r; pos[i*3+2] = 0;
+      }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([0,0,1, 0,0,1, 0,0,1]), 3));
+      return g;
+    });
+
+    const GRAVITY_FALL = 5.5, SHARD_DRAG = 0.6;
+    const glassShards = []; // active {mesh, vel, angVel, life, maxLife, baseOpacity}
+    const _shardNormal = new THREE.Vector3(), _shardTangent = new THREE.Vector3();
+
+    function spawnGlassShatter(m) {
+      playCollisionClink(1);
+      const effR = m.radius * m.group.scale.x; // shell is mid-launch-grow when it breaks — use its current visual size
+      const n = 12 + Math.floor(Math.random() * 6);
+      for (let i = 0; i < n; i++) {
+        _shardNormal.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: 0xffffff, metalness: 0, roughness: 0.05,
+          clearcoat: 0.5, clearcoatRoughness: 0.1, envMapIntensity: 1.2,
+          transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(SHARD_SHAPES[i % SHARD_SHAPES.length], mat);
+        mesh.position.copy(m.pos).addScaledVector(_shardNormal, effR * (0.7 + Math.random() * 0.3));
+        mesh.scale.setScalar(effR * (0.35 + Math.random() * 0.4));
+        _shardTangent.set(-_shardNormal.y, _shardNormal.x, _shardNormal.z * 0.3 + 0.001).normalize();
+        mesh.lookAt(mesh.position.clone().add(_shardTangent));
+        mesh.rotateX(Math.random() * Math.PI);
+        scene.add(mesh);
+
+        const speed = 1.6 + Math.random() * 2.6;
+        glassShards.push({
+          mesh,
+          vel: _shardNormal.clone().multiplyScalar(speed).addScaledVector(new THREE.Vector3(0,1,0), 0.8 + Math.random()),
+          angVel: new THREE.Vector3((Math.random()-0.5)*6, (Math.random()-0.5)*6, (Math.random()-0.5)*6),
+          life: 0,
+          maxLife: 1.1 + Math.random() * 0.6,
+          baseOpacity: 0.85,
+        });
+      }
+    }
+
+    function updateGlassShards(dt) {
+      for (let i = glassShards.length - 1; i >= 0; i--) {
+        const s = glassShards[i];
+        s.life += dt;
+        if (s.life >= s.maxLife) {
+          scene.remove(s.mesh);
+          s.mesh.material.dispose();
+          glassShards.splice(i, 1);
+          continue;
+        }
+        s.vel.y -= GRAVITY_FALL * dt;
+        s.vel.multiplyScalar(1 - SHARD_DRAG * dt);
+        s.mesh.position.addScaledVector(s.vel, dt);
+        s.mesh.rotation.x += s.angVel.x * dt;
+        s.mesh.rotation.y += s.angVel.y * dt;
+        s.mesh.rotation.z += s.angVel.z * dt;
+        const fadeStart = s.maxLife * 0.6;
+        s.mesh.material.opacity = s.life < fadeStart
+          ? s.baseOpacity
+          : s.baseOpacity * (1 - (s.life - fadeStart) / (s.maxLife - fadeStart));
+      }
+    }
+
     const csIndex     = document.getElementById('cs-index');
     const csCategory  = document.getElementById('cs-category');
     const csTitle     = document.getElementById('cs-title');
     const csDesc      = document.getElementById('cs-desc');
+    const csTag       = document.getElementById('cs-placeholder-tag');
+    const PLACEHOLDER_TAG_TEXT = csTag.textContent;
 
     // Character-scramble "decode" reveal — cycles random glyphs, settling
     // left-to-right into the real text, then a quick RGB-split glitch flick.
@@ -933,6 +1024,7 @@
         m.group.scale.setScalar(1 + e * 1.4); // grow to 2.4x
         if (t >= 1) {
           phase = 'break'; phaseStart = time;
+          spawnGlassShatter(m);
           burstMesh.position.copy(m.pos);
           burstMesh.scale.setScalar(m.radius * 1.4);
           burstMesh.visible = true;
@@ -947,7 +1039,6 @@
         m.outer.material.opacity = 1 - k;
         m.outer.material.clearcoat = 0.4 * (1 - k);
         m.innerGroup.scale.setScalar(1 - k);
-        if (m.imagePlane) m.imagePlane.material.opacity = 0.72 + 0.28 * k;
 
         if (phase === 'break') {
           burstMesh.quaternion.copy(camera.quaternion);
@@ -960,7 +1051,14 @@
             csIndex.textContent = String(idx).padStart(2, '0');
             scrambleInto(csCategory, `${String(idx).padStart(2,'0')} // ${m.label.toUpperCase()}`, 500);
             scrambleInto(csTitle, m.label.toUpperCase(), 900);
-            csDesc.textContent = (CASE_COPY[m.label] && CASE_COPY[m.label].desc) || PLACEHOLDER_DESC;
+            const copy = CASE_COPY[m.label];
+            csDesc.textContent = (copy && copy.desc) || PLACEHOLDER_DESC;
+            if (copy && copy.desc) {
+              if (copy.tag) { csTag.textContent = copy.tag; csTag.style.display = ''; }
+              else csTag.style.display = 'none';
+            } else {
+              csTag.textContent = PLACEHOLDER_TAG_TEXT; csTag.style.display = '';
+            }
             document.body.classList.add('expanded');
             requestAnimationFrame(() => window.scrollTo({ top: innerHeight, behavior: 'smooth' }));
           }
@@ -1040,7 +1138,7 @@
     let handStream        = null;
     let handRafId          = null;
     let handTrackingEnabled = false;
-    const handState = { visible:false, x:0.5, y:0.5, pinching:false, worldLandmarks:null };
+    const handState = { visible:false, x:0.5, y:0.5, pinching:false, pinchRatio:1, fistRatio:0, worldLandmarks:null };
 
     let grabbedMarble = null;
     let grabDepth      = 0;
@@ -1058,12 +1156,31 @@
           handState.y = (thumb.y + index.y) / 2;
           // scale-invariant: compare pinch gap to the wrist→index-knuckle span
           const ref = Math.hypot(lm[0].x - lm[5].x, lm[0].y - lm[5].y) || 0.001;
-          handState.pinching = Math.hypot(thumb.x - index.x, thumb.y - index.y) / ref < 0.55;
+          const pinchRatio = Math.hypot(thumb.x - index.x, thumb.y - index.y) / ref;
+          handState.pinching = pinchRatio < 0.55;
+          handState.pinchRatio = pinchRatio;
+
+          // Fist curl: for the three fingers not busy pinching (middle/ring/pinky),
+          // compare each fingertip's distance from the wrist to its own knuckle's
+          // distance from the wrist — an extended finger's tip sits well past its
+          // knuckle, a curled one collapses back toward it. Averaged into 0-1.
+          const wrist = lm[0];
+          let curlSum = 0;
+          for (const [mcpI, tipI] of [[9,12],[13,16],[17,20]]) {
+            const mcp = lm[mcpI], tip = lm[tipI];
+            const mcpDist = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y) || 0.001;
+            const tipDist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+            const extendRatio = tipDist / mcpDist; // ~1.6+ extended, ~1 or less curled into the palm
+            curlSum += Math.min(Math.max((1.35 - extendRatio) / 0.55, 0), 1);
+          }
+          handState.fistRatio = curlSum / 3;
+
           handState.worldLandmarks = result.worldLandmarks && result.worldLandmarks[0];
           handState.visible = true;
         } else {
           handState.visible = false;
           handState.pinching = false;
+          handState.fistRatio = 0;
           handState.worldLandmarks = null;
         }
       }
@@ -1105,7 +1222,7 @@
 
     function disableHandTracking() {
       handTrackingEnabled = false;
-      handState.visible = false; handState.pinching = false;
+      handState.visible = false; handState.pinching = false; handState.fistRatio = 0;
       grabbedMarble = null;
       if (handRafId) cancelAnimationFrame(handRafId);
       handRafId = null;
@@ -1122,10 +1239,10 @@
     });
 
     const HAND_HOVER_DEPTH = 3.2; // distance in front of camera the rig floats at when not holding anything
-    const SWIPE_RADIUS     = 0.9;  // influence radius around the hand (added to each marble's own radius)
-    const SWIPE_MIN_SPEED  = 1.2;  // world units/sec — ignore a barely-moving open hand
+    const SWIPE_RADIUS     = 1.3;  // influence radius around the hand (added to each marble's own radius)
+    const SWIPE_MIN_SPEED  = 0.9;  // world units/sec — ignore a barely-moving open hand
     const SWIPE_MAX_SPEED  = 14;   // hand speed is clamped here before scaling the kick
-    const SWIPE_STRENGTH   = 0.9;
+    const SWIPE_STRENGTH   = 1.8;
     const _prevHandAnchor  = new THREE.Vector3();
     const _handVel         = new THREE.Vector3();
     const _swipeDir        = new THREE.Vector3();
@@ -1144,6 +1261,11 @@
       handNDC.set(1 - 2 * handState.x, 1 - 2 * handState.y); // mirror for natural "reach out and grab" feel
       raycaster.setFromCamera(handNDC, camera);
 
+      // Grabbing something new always needs a precise pinch. Once held, though,
+      // curling into a fist counts as still holding too — otherwise closing the
+      // rest of the hand to make a fist (see updateHandCrush) reads as letting go.
+      const isHolding = handState.pinching || handState.fistRatio > 0.3;
+
       if (handState.pinching && !wasPinching && phase === 'idle') {
         const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
         const m = allMarbles.find(mm => mm.outer === hit);
@@ -1153,17 +1275,41 @@
       const depth = grabbedMarble ? grabDepth : HAND_HOVER_DEPTH;
       raycaster.ray.at(depth, _handAnchor);
 
-      if (handState.pinching && grabbedMarble) {
+      if (isHolding && grabbedMarble) {
         if (dt > 0) grabbedMarble.vel.copy(_handAnchor).sub(grabbedMarble.pos).multiplyScalar(1 / dt);
         grabbedMarble.pos.copy(_handAnchor);
         grabbedMarble.group.position.copy(_handAnchor);
       }
 
-      if (!handState.pinching) grabbedMarble = null; // release — physics takes over with the last-held velocity
+      if (!isHolding) grabbedMarble = null; // hand fully opened — physics takes over with the last-held velocity
       wasPinching = handState.pinching;
 
+      updateHandCrush(dt);
       updateHandSwipe(dt);
       updateHandRig();
+    }
+
+    // Crush-to-open: while holding a portfolio marble, curl the rest of the
+    // hand into a fist around it and hold for a beat to pop it open — same
+    // effect as clicking it, but as a physical "crush it open" gesture.
+    const FIST_TRIGGER = 0.7; // fistRatio (0-1) needed to count as a real fist, not just relaxed fingers
+    const CRUSH_HOLD   = 0.4; // seconds the fist must be held to trigger
+    let crushTimer     = 0;
+    let crushProgress  = 0; // 0-1, read by the hover-scale loop to squash the marble as it builds
+
+    function updateHandCrush(dt) {
+      const crushing = grabbedMarble && grabbedMarble.isPortfolio
+                     && handState.fistRatio > FIST_TRIGGER && phase === 'idle';
+      if (!crushing) { crushTimer = 0; crushProgress = 0; return; }
+      crushTimer += dt;
+      crushProgress = Math.min(crushTimer / CRUSH_HOLD, 1);
+      if (crushProgress >= 1) {
+        playGlassClink();
+        const m = grabbedMarble;
+        grabbedMarble = null;
+        crushTimer = 0; crushProgress = 0;
+        startOpen(m);
+      }
     }
 
     // Open-hand swipe: when the hand isn't pinching/holding anything, a fast
@@ -1246,8 +1392,8 @@
       handBoneMat.color.setHex(color);
     }
 
-    // ── MAIN LOOP — capped at 24 fps ──────────────────────────────
-    const FRAME_MS = 1000 / 24;
+    // ── MAIN LOOP — capped at 60 fps ──────────────────────────────
+    const FRAME_MS = 1000 / 60;
     let prevFrameTime = 0;
     let time = 0;
 
@@ -1261,6 +1407,7 @@
       updateHandGrab(dt);
       physicsStep(dt);
       updateTransition();
+      updateGlassShards(dt);
 
       // Slowly rotate swirl backdrops on all marbles
       for (const m of allMarbles) {
@@ -1284,7 +1431,9 @@
           m.vel.addScaledVector(dir, 2.0);
         }
         m.wasHovered = m.hovered;
-        m.scaleTarget  = m.hovered ? 1.14 : 1.0;
+        m.scaleTarget = m === grabbedMarble
+          ? 1.14 - 0.4 * crushProgress // squash as the crush-to-open squeeze builds
+          : (m.hovered ? 1.14 : 1.0);
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
         m.group.scale.setScalar(m.scaleCurrent);
       }
