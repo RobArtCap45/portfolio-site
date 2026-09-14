@@ -1577,9 +1577,14 @@
           m.vel.addScaledVector(dir, 2.0);
         }
         m.wasHovered = m.hovered;
+        // Shrink the rest of the pile whenever a case is open (or opening/
+        // closing) — less visual competition for the big expanded marble
+        // and the panel, and it reads as "this is the one in focus" instead
+        // of a full-size pile just sitting there next to it.
+        const restScale = phase === 'idle' ? 1.0 : 0.55;
         m.scaleTarget = m === grabbedMarble
           ? 1.14 - 0.4 * crushProgress // squash as the crush-to-open squeeze builds
-          : (m.hovered ? 1.14 : 1.0);
+          : (m.hovered ? restScale * 1.14 : restScale);
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
         m.group.scale.setScalar(m.scaleCurrent);
       }
