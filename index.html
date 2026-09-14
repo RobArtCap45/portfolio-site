@@ -1086,11 +1086,15 @@
       canvas.classList.remove('dragging');
       const fwd = new THREE.Vector3();
       camera.getWorldDirection(fwd);
-      // Right vector of the (now frozen) camera — used both to send the opening
-      // marble off to screen-right, and to pull the rest of the pile the other
-      // way, so the case panel sliding in on the right isn't fighting the marbles.
+      // Right vector of the (now frozen) camera — used to keep both the
+      // opening marble and the rest of the pile clear of the panel, which
+      // covers roughly the right half of the screen once it's open.
       const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-      launchTarget.copy(camera.position).addScaledVector(fwd, 3.1).addScaledVector(right, 1.35);
+      // Nudged left (not right) of dead-center — the panel starts just past
+      // screen-center, so anything placed toward the right ends up underneath
+      // it. This keeps the opened marble's image fully clear, in the gap
+      // between the pile and the panel.
+      launchTarget.copy(camera.position).addScaledVector(fwd, 3.1).addScaledVector(right, -1.1);
       // Pushed almost entirely off-frame — only about half the pile stays on
       // screen, hugging the left edge, well clear of the panel on the right.
       groupPullGoal.set(0, 0, 0).addScaledVector(right, -4.0);
