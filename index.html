@@ -716,6 +716,17 @@
     // in animate() so the collision spacing shrinks right along with the
     // marbles instead of leaving them looking spread out at the smaller size.
     const PILE_SHRINK = 0.55;
+    // The actual eased shrink amount, updated once per frame in animate()
+    // and read by both physicsStep (collision/containment spacing) and the
+    // render loop (visual scale) below. Using one smoothed value for both,
+    // instead of each reading the raw `phase` and snapping instantly, is
+    // what keeps them in lockstep — a same-frame mismatch between "how big
+    // the marbles look" and "how far apart the physics keeps them" is what
+    // caused the skip/jump when opening or closing a case (most visible on
+    // close, when the collision minimum used to snap back to full size
+    // instantly while the marbles were still visually small, forcing an
+    // abrupt one-frame shove apart).
+    let pileScale = 1;
     // Slow tangential nudge applied to the pile while shrunk, so it reads as
     // a lazily tumbling handful of marbles instead of a static cluster —
     // same idea as the idle camera's auto-rotate, but orbiting the marbles
@@ -732,9 +743,11 @@
 
     function physicsStep(dt) {
       const sub=dt/SUBSTEPS;
-      // Pack the pile tighter to match its shrunk render size, and give it a
-      // slow orbital drift, whenever a case is open (or opening/closing).
-      const rScale = phase === 'idle' ? 1 : PILE_SHRINK;
+      // Pack the pile tighter to match its shrunk render size (rScale tracks
+      // the same eased pileScale the render loop uses — see its declaration
+      // above), and give it a slow orbital drift whenever a case is open
+      // (or opening/closing).
+      const rScale = pileScale;
       const orbiting = phase !== 'idle';
       for (let s=0; s<SUBSTEPS; s++) {
         for (const m of allMarbles) {
@@ -1565,6 +1578,8 @@
 
       updateHandGrab(dt);
       groupPull.lerp(groupPullGoal, Math.min(dt * 2.2, 1)); // eases the pile's gravity well sideways
+      const pileScaleTarget = phase === 'idle' ? 1 : PILE_SHRINK;
+      pileScale += (pileScaleTarget - pileScale) * Math.min(dt * 8, 1); // same easing speed as the render lerp below
       physicsStep(dt);
       updateTransition();
       updateGlassShards(dt);
@@ -1599,16 +1614,16 @@
           m.vel.addScaledVector(dir, 2.0);
         }
         m.wasHovered = m.hovered;
-        // Shrink the rest of the pile whenever a case is open (or opening/
-        // closing) — less visual competition for the big expanded marble
-        // and the panel, and it reads as "this is the one in focus" instead
-        // of a full-size pile just sitting there next to it.
-        const restScale = phase === 'idle' ? 1.0 : PILE_SHRINK;
+        // scaleCurrent/scaleTarget track only the hover bump (and the
+        // hand-crush squash) — the pile-open/close shrink itself comes from
+        // pileScale, applied directly below rather than folded into this
+        // lerp, so it stays in lockstep with the same pileScale physicsStep
+        // uses for collision spacing (see its declaration up top).
         m.scaleTarget = m === grabbedMarble
           ? 1.14 - 0.4 * crushProgress // squash as the crush-to-open squeeze builds
-          : (m.hovered ? restScale * 1.14 : restScale);
+          : (m.hovered ? 1.14 : 1.0);
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
-        m.group.scale.setScalar(m.scaleCurrent);
+        m.group.scale.setScalar(m.scaleCurrent * pileScale);
       }
       const idlePointer = phase === 'idle' && !cam.dragging && allMarbles.some(m => m.hovered && m.isPortfolio);
       const openPointer = phase === 'open' && !!hitObj;
