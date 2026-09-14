@@ -121,13 +121,15 @@
     }
 
     /* ── CASE STUDY REVEAL (fixed side panel, not a modal, not a scroll-into-view) ── */
-    /* The opened marble now breaks toward screen-right and the rest of the
-       marble field settles to the left (see groupPull in the JS below), so the
-       hero canvas stays visible and animating on the left the whole time this
-       panel is open — no page scroll needed to reach it. */
+    /* Matches the reference layout: the opened marble breaks toward dead
+       screen-center as a big circle, deliberately tucking its right edge
+       behind this panel, while the rest of the marble field settles far to
+       the left (see groupPull in the JS below) — the hero canvas stays
+       visible and animating the whole time this panel is open, no page
+       scroll needed to reach it. */
     #case-content {
       position: fixed; top: 0; right: 0; z-index: 5;
-      width: min(640px, 46vw); height: 100vh;
+      width: min(620px, 43vw); height: 100vh;
       pointer-events: none;
       transform: translateX(100%);
       transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
@@ -141,7 +143,7 @@
       -webkit-overflow-scrolling: touch;
       background: #08080e;
       border-left: 1px solid rgba(255,255,255,0.08);
-      box-shadow: -60px 0 100px rgba(0,0,0,0.5);
+      box-shadow: -30px 4px 40px rgba(0,0,0,0.45);
     }
     .case-inner {
       position: relative;
@@ -1108,15 +1110,15 @@
       canvas.classList.remove('dragging');
       const fwd = new THREE.Vector3();
       camera.getWorldDirection(fwd);
-      // Right vector of the (now frozen) camera — used to keep both the
-      // opening marble and the rest of the pile clear of the panel, which
-      // covers roughly the right half of the screen once it's open.
+      // Right vector of the (now frozen) camera — used to pull the rest of
+      // the pile clear of the panel, which covers roughly the right 43% of
+      // the screen once it's open.
       const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-      // Nudged left (not right) of dead-center — the panel starts just past
-      // screen-center, so anything placed toward the right ends up underneath
-      // it. This keeps the opened marble's image fully clear, in the gap
-      // between the pile and the panel.
-      launchTarget.copy(camera.position).addScaledVector(fwd, 3.1).addScaledVector(right, -1.1);
+      // Dead center — per the reference layout, the opened marble is a big
+      // circle sitting at screen-center, deliberately tucking its right edge
+      // behind the panel (with the panel's shadow falling across it), not
+      // dodging it.
+      launchTarget.copy(camera.position).addScaledVector(fwd, 3.1);
       // Pushed almost entirely off-frame — only about half the pile stays on
       // screen, hugging the left edge, well clear of the panel on the right.
       groupPullGoal.set(0, 0, 0).addScaledVector(right, -4.0);
