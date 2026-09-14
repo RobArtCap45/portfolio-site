@@ -234,7 +234,7 @@
     body.expanded #bottomnav { opacity: 0; pointer-events: none; }
 
     /* Non-interactive hint over the marble sliver that's still peeking in on
-       the left while a case is open — no back button, hovering (or tapping,
+       the left while a case is open — no back button, clicking (or tapping,
        on touch) those marbles is what closes it. */
     #expanded-hint {
       position: fixed; left: 28px; bottom: 26px; z-index: 40;
@@ -290,7 +290,7 @@
       </div>
     </div>
   </section>
-  <div id="expanded-hint">hover / tap the marbles to go back</div>
+  <div id="expanded-hint">click / tap the marbles to go back</div>
 
   <script type="importmap">
     { "imports": {
@@ -1151,9 +1151,9 @@
       document.body.classList.remove('expanded');
       groupPullGoal.set(0, 0, 0);
     }
-    // No back button — hovering (desktop) or tapping (touch) the marble pile
+    // No back button — clicking (desktop) or tapping (touch) the marble pile
     // peeking in on the left edge while a case is open closes it. See the
-    // hover block in animate() and the mouseup/touchend handlers below.
+    // mouseup/touchend handlers below.
     window.addEventListener('keydown', e => { if (e.key === 'Escape') startClose(); });
 
     function updateTransition() {
@@ -1230,8 +1230,7 @@
         const m = allMarbles.find(mm => mm.outer === hit);
         if (m && m.isPortfolio) startOpen(m);
       } else if (phase === 'open') {
-        // No back button — clicking the marble pile (mirrors the hover-close
-        // above, for anyone who clicks instead of just hovering) goes back.
+        // No back button — clicking the marble pile goes back.
         raycaster.setFromCamera(mouse, camera);
         const hits = raycaster.intersectObjects(outerMeshes);
         if (hits.find(h => h.object !== (active && active.outer))) startClose();
@@ -1576,10 +1575,12 @@
         m.innerGroup.rotation.y += dt * 0.05;
       }
 
-      // Hover — reuse cached array, no allocation. Also live during 'open':
-      // hovering the marble pile peeking in on the left is what closes the
-      // case (no back button). The opened marble's own shell is excluded from
-      // that hit test so lingering near the panel never triggers it.
+      // Hover — reuse cached array, no allocation. Also live during 'open',
+      // purely for the pointer cursor / marble-puff feedback — clicking (or
+      // tapping) the pile peeking in on the left is what actually closes the
+      // case (see the mouseup/touchend handlers below), not just hovering.
+      // The opened marble's own shell is excluded from the hit test so
+      // lingering near the panel never lights it up.
       raycaster.setFromCamera(mouse, camera);
       let hitObj = null;
       if (!cam.dragging && (phase === 'idle' || phase === 'open')) {
@@ -1587,7 +1588,6 @@
         const first = hits.find(h => h.object !== (active && active.outer));
         if (first) hitObj = first.object;
       }
-      if (phase === 'open' && hitObj) startClose();
 
       for (const m of allMarbles) {
         if (m === active) continue; // scale/position owned by the reveal transition
