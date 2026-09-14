@@ -754,6 +754,28 @@
           }
         }
       }
+      // Extra position-only depenetration passes. The single collision pass
+      // above (velocity impulse + sound) can't fully separate a tightly
+      // packed pile in one go, especially with gravity constantly pulling
+      // everyone back together — this squeezes out the leftover overlap
+      // (pure position correction, no velocity/sound) so the glass shells
+      // read as touching rather than visibly clipping through each other.
+      for (let p = 0; p < 3; p++) {
+        for (let i=0;i<allMarbles.length;i++) {
+          for (let j=i+1;j<allMarbles.length;j++) {
+            const a=allMarbles[i],b=allMarbles[j];
+            if (a === active || b === active) continue;
+            const dx=a.pos.x-b.pos.x,dy=a.pos.y-b.pos.y,dz=a.pos.z-b.pos.z;
+            const d2=dx*dx+dy*dy+dz*dz, min=a.radius+b.radius;
+            if (d2<min*min&&d2>1e-6) {
+              const d=Math.sqrt(d2),inv=1/d,pen=(min-d)*0.5;
+              const nx=dx*inv,ny=dy*inv,nz=dz*inv;
+              a.pos.x+=nx*pen;a.pos.y+=ny*pen;a.pos.z+=nz*pen;
+              b.pos.x-=nx*pen;b.pos.y-=ny*pen;b.pos.z-=nz*pen;
+            }
+          }
+        }
+      }
       for (const m of allMarbles) { if (m !== active) m.group.position.copy(m.pos); }
     }
 
