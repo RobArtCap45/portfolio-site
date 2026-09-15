@@ -130,7 +130,8 @@
        scroll needed to reach it. */
     #case-content {
       position: fixed; top: 0; right: 0; z-index: 5;
-      width: min(620px, 43vw); height: 100vh;
+      /* 2/3 of the screen — PANEL_WIDTH_FRAC in the JS below must match. */
+      width: min(1100px, 66.667vw); height: 100vh;
       pointer-events: none;
       transform: translateX(100%);
       transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
@@ -972,7 +973,36 @@
     // the position moves, driven by camRecedeAmt below.
     const RECEDE_DIST = 3.0;
     let camRecedeAmt = 0; // 0 = camera at its normal base position, 1 = pushed all the way forward
-    let ringHideAmt  = 0; // 0 = rest of the ring fully visible, 1 = shrunk out of view
+    let ringHideAmt  = 0; // 0 = rest of the ring fully visible, 1 = flown past the camera and gone
+    // The rest of the ring's "fly past the camera" look, driven by
+    // ringHideAmt: they balloon up (RING_FLY_GROW), get pushed toward the
+    // viewer along the camera's frozen forward axis (RING_FLY_TOWARD — big
+    // enough that they end up behind the camera's own forward-pushed
+    // position, so they fall outside the view frustum), and scatter
+    // outward a bit (RING_FLY_OUTWARD) so they don't all fly the same line.
+    const RING_FLY_GROW    = 3.2;
+    const RING_FLY_TOWARD  = 7.0;
+    const RING_FLY_OUTWARD = 1.8;
+
+    // Open-state screen layout: the case-study panel takes PANEL_WIDTH_FRAC
+    // of the screen (must match #case-content's CSS width above), leaving
+    // the rest for the marble. The marble's resting position and grown-open
+    // size are both computed from the camera's actual FOV/aspect (see
+    // worldHalfWidthAtDepth) so it always lands centered in that leftover
+    // zone at the same on-screen fraction, comfortably inside it — never
+    // cropped by the panel or the screen edge — regardless of window size.
+    const PANEL_WIDTH_FRAC = 2 / 3;
+    const MARBLE_ZONE_FRAC = 1 - PANEL_WIDTH_FRAC;
+    const MARBLE_FILL      = 0.82; // how much of that zone's width the marble's diameter fills
+    function worldHalfWidthAtDepth(depth) {
+      const halfH = depth * Math.tan(camera.fov * Math.PI / 360); // fov/2, in radians
+      return halfH * camera.aspect;
+    }
+    // Computed fresh each time a case opens (see startOpen) — how far left
+    // the marble settles, and how big it grows to fill its third of the
+    // screen. Defaults here only matter before the very first open.
+    let openShiftX    = -5.7;
+    let openGrowScale = 2.4;
     const camFrozenFwd   = new THREE.Vector3(0, 0, -1);
     const camFrozenRight = new THREE.Vector3(1, 0, 0);
 
@@ -1143,6 +1173,16 @@
       // throughout.
       camFrozenFwd.copy(fwd);
       camFrozenRight.setFromMatrixColumn(camera.matrixWorld, 0);
+      // Recompute the open-state layout for the current window/camera —
+      // where the marble settles (openShiftX) and how big it grows
+      // (openGrowScale) so it fills its third of the screen without being
+      // cropped. Depth uses the camera's normal (undollied) distance from
+      // the ring, since that's where the camera sits again by 'open' (see
+      // the 'settle' phase in updateTransition).
+      const halfW = worldHalfWidthAtDepth(cam.radius);
+      const marbleFrac = MARBLE_ZONE_FRAC / 2; // center of the leftover zone (left, since the panel's on the right)
+      openShiftX = (marbleFrac * 2 - 1) * halfW;
+      openGrowScale = (MARBLE_ZONE_FRAC * MARBLE_FILL * halfW * 2) / (2 * m.radius);
       // Stage 1 (launch) targets dead-center — the ring's own live center —
       // not the final left-shifted resting spot. That shift only happens
       // once we reach stage 3 (settle), once the marble's alone in view.
@@ -1174,7 +1214,7 @@
         m.pos.lerpVectors(launchStart, groupPull, e);
         m.vel.set(0, 0, 0);
         m.group.position.copy(m.pos);
-        m.group.scale.setScalar(1 + e * 1.4); // grow to 2.4x
+        m.group.scale.setScalar(1 + e * (openGrowScale - 1)); // grows to fill its third of the screen
         camRecedeAmt = 0;
         ringHideAmt = 0;
         if (t >= 1) {
@@ -1219,7 +1259,7 @@
             csTag.textContent = PLACEHOLDER_TAG_TEXT; csTag.style.display = '';
           }
           document.body.classList.add('expanded'); // slides the fixed panel in — no page scroll involved
-          groupPullGoal.set(0, 0, 0).addScaledVector(camFrozenRight, -5.7);
+          groupPullGoal.set(0, 0, 0).addScaledVector(camFrozenRight, openShiftX);
           phase = 'settle'; phaseStart = time;
         }
         return;
@@ -1658,10 +1698,20 @@
           ? 1.14 - 0.4 * crushProgress // squash as the crush-to-open squeeze builds
           : (m.hovered ? 1.14 : 1.0);
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
-        // Non-active marbles shrink to nothing during recede/settle/open and
-        // grow back during close, per ringHideAmt (see updateTransition) —
-        // this is how "the other marbles go back... out of view" reads.
-        m.group.scale.setScalar(m.scaleCurrent * pileScale * (1 - ringHideAmt));
+        // Non-active marbles balloon up and rush past the camera toward the
+        // viewer as it pushes forward through the ring (recede), ending up
+        // well behind the camera and out of the view frustum through
+        // settle/open — then reverse (shrink back down, return to the ring)
+        // during close. Driven by ringHideAmt (see updateTransition).
+        const flyScale = 1 + ringHideAmt * (RING_FLY_GROW - 1);
+        m.group.scale.setScalar(m.scaleCurrent * pileScale * flyScale);
+        if (ringHideAmt > 0) {
+          _v.copy(m.pos).sub(groupPull); // this marble's own radial direction on the ring
+          if (_v.lengthSq() < 1e-6) _v.set(1, 0, 0); else _v.normalize();
+          m.group.position.copy(m.pos)
+            .addScaledVector(camFrozenFwd, -RING_FLY_TOWARD * ringHideAmt)  // toward the viewer
+            .addScaledVector(_v, RING_FLY_OUTWARD * ringHideAmt);           // scatter outward too
+        }
       }
       const idlePointer = phase === 'idle' && !cam.dragging && allMarbles.some(m => m.hovered && m.isPortfolio);
       canvas.style.cursor = idlePointer ? 'pointer' : '';
