@@ -36,16 +36,17 @@
     #topnav, #bottomnav {
       position: fixed; left: 0; right: 0; z-index: 100;
       display: flex; align-items: center; padding: 0 28px;
-      background: rgba(8,8,14,0.7);
-      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
     }
     #topnav {
       top: 0; height: 54px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 1px 0 0 rgba(40,100,220,0.25);
+      /* Fully transparent — no box/blur behind it — so the marbles stay
+         visible through the nav instead of being covered by a bar. */
+      background: none;
     }
     #bottomnav {
       bottom: 0; height: 42px;
+      background: rgba(8,8,14,0.7);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       border-top: 1px solid rgba(255,255,255,0.08);
       justify-content: center; gap: 12px;
     }
@@ -233,19 +234,25 @@
     #bottomnav { transition: opacity 0.3s ease; }
     body.expanded #bottomnav { opacity: 0; pointer-events: none; }
 
-    /* Non-interactive hint over the marble sliver that's still peeking in on
-       the left while a case is open — no back button, clicking (or tapping,
-       on touch) those marbles is what closes it. */
-    #expanded-hint {
-      position: fixed; left: 28px; bottom: 26px; z-index: 40;
-      font-family: 'Space Mono', monospace; font-size: 9px;
+    /* Back button — the only way to close a case study now that the rest of
+       the ring fades/shrinks out of view while one's open (see ringHideAmt
+       in the JS below), so there's no marble pile left to click on. */
+    #back-btn {
+      position: fixed; left: 24px; top: 64px; z-index: 110;
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Space Mono', monospace; font-size: 10px;
       letter-spacing: 3px; text-transform: uppercase;
-      color: rgba(255,255,255,0.35);
-      pointer-events: none;
-      opacity: 0; transform: translateY(8px);
-      transition: opacity 0.4s ease 0.3s, transform 0.4s ease 0.3s;
+      color: rgba(255,255,255,0.7);
+      background: rgba(8,8,14,0.55);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 4px; padding: 7px 12px;
+      cursor: pointer;
+      opacity: 0; pointer-events: none; transform: translateX(-6px);
+      transition: opacity 0.35s ease 0.15s, transform 0.35s ease 0.15s,
+                  border-color 0.2s, color 0.2s;
     }
-    body.expanded #expanded-hint { opacity: 1; transform: translateY(0); }
+    #back-btn:hover { color: rgba(255,255,255,0.95); border-color: rgba(80,140,255,0.55); }
+    body.expanded #back-btn { opacity: 1; pointer-events: auto; transform: translateX(0); }
   </style>
 </head>
 <body>
@@ -290,7 +297,7 @@
       </div>
     </div>
   </section>
-  <div id="expanded-hint">click / tap the marbles to go back</div>
+  <button id="back-btn" aria-label="Back to marbles">&larr; Back</button>
 
   <script type="importmap">
     { "imports": {
@@ -614,22 +621,29 @@
       };
     }
 
-    const allMarbles = [
-      ...PORTFOLIO.map((d,i) => buildMarble(d, i, imgTex[d.label])),
-      ...SMALLS.map((d,i)    => buildMarble(d, i+6)),           // smalls keep the swirl
-    ];
-    const portfolioMarbles = allMarbles.filter(m => m.isPortfolio);
+    // SMALLS (the 5 small decorative inner-ring marbles) are kept defined
+    // above but left out of the scene for now — there's nothing yet for them
+    // to represent. Re-add them (and the inner ring) once there's real
+    // content: build them into allMarbles below and give them a 'inner'
+    // ringTier + concentric radius again in computeRingTarget.
+    const allMarbles = PORTFOLIO.map((d,i) => buildMarble(d, i, imgTex[d.label]));
+    const portfolioMarbles = allMarbles;
 
     // Home-screen ring formation (per the Figma "New Home Screen" / Radial
-    // reference): the 8 portfolio marbles sit on an outer ring, the 5 small
-    // decorative marbles on a smaller concentric inner ring, both centered on
+    // reference): the 8 portfolio marbles sit on a single ring, centered on
     // groupPull and camera-facing so it always reads as a circle regardless
-    // of the auto-orbit angle. ringSlot is each marble's fixed seat in its
-    // ring's original order — see computeRingTarget below.
-    allMarbles.forEach((m, i) => {
-      if (i < PORTFOLIO.length) { m.ringTier = 'outer'; m.ringSlot = i; }
-      else { m.ringTier = 'inner'; m.ringSlot = i - PORTFOLIO.length; }
-    });
+    // of the auto-orbit angle. ringSlot is each marble's seat — assigned by
+    // a one-time shuffle (not a fixed identity → slot mapping) so marbles
+    // settle into a random seat rather than "their" seat — see
+    // computeRingTarget below.
+    {
+      const seatOrder = Array.from({ length: PORTFOLIO.length }, (_, i) => i);
+      for (let i = seatOrder.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [seatOrder[i], seatOrder[j]] = [seatOrder[j], seatOrder[i]];
+      }
+      allMarbles.forEach((m, i) => { m.ringTier = 'outer'; m.ringSlot = seatOrder[i]; });
+    }
 
     // ── INIT POSITIONS ────────────────────────────────────────────
     // Start clustered near the middle with a little jitter (so no two start
@@ -723,9 +737,10 @@
     // open — shared by the physics packing below and the render-scale loop
     // in animate() so the collision spacing resizes right along with the
     // marbles instead of leaving them looking mismatched at the new size.
-    // >1: per the new Figma "Transition" motion, the remaining ring grows
-    // and spreads open (not shrinks) as the clicked marble pushes forward.
-    const RING_OPEN_SCALE = 1.6;
+    // Kept at 1 (no resize) — opening a case just makes the ring fill the
+    // gap the clicked marble left (see computeRingTarget below), it doesn't
+    // grow or shrink the remaining marbles.
+    const RING_OPEN_SCALE = 1;
     // The actual eased resize amount, updated once per frame in animate()
     // and read by both physicsStep (collision/containment spacing) and the
     // render loop (visual scale) below. Using one smoothed value for both,
@@ -739,12 +754,13 @@
     let pileScale = 1;
 
     // ── RING FORMATION ──────────────────────────────────────────────
-    // Outer ring: the 8 portfolio marbles. Inner ring: the 5 small ones.
-    // Both are circles in the camera-facing plane (_ringRight/_ringUp, set
-    // once per frame in animate() from the camera's own right/up axes) so
-    // the formation always reads as a flat ring on screen no matter which
-    // way the idle auto-orbit is currently facing — matching the Figma
-    // "Radial" reference at any angle instead of just head-on.
+    // The 8 portfolio marbles sit on a single ring, a circle in the
+    // camera-facing plane (_ringRight/_ringUp, set once per frame in
+    // animate() from the camera's own right/up axes) so the formation
+    // always reads as a flat ring on screen no matter which way the idle
+    // auto-orbit is currently facing — matching the Figma "Radial"
+    // reference at any angle instead of just head-on.
+    // INNER_RING_R is kept for when the SMALLS inner ring is re-added.
     const OUTER_RING_R = 2.35, INNER_RING_R = 0.85;
     const RING_SPRING_K = 9.0; // how firmly each marble is pulled to its ring seat
     const RING_ROT_SPEED = 0.05; // slow continuous spin, radians/sec
@@ -767,17 +783,10 @@
     // the remaining 7 smoothly re-space themselves to fill the gap it left —
     // and settle right back into the full 8-seat ring once it closes.
     function computeRingTarget(m, out) {
-      const isOuter = m.ringTier === 'outer';
-      const R = (isOuter ? OUTER_RING_R : INNER_RING_R) * pileScale;
-      let N, rank;
-      if (isOuter) {
-        const activeSlot = (active && active.ringTier === 'outer') ? active.ringSlot : -1;
-        N = PORTFOLIO.length - (activeSlot >= 0 ? 1 : 0);
-        rank = (activeSlot < 0 || m.ringSlot < activeSlot) ? m.ringSlot : m.ringSlot - 1;
-      } else {
-        N = SMALLS.length;
-        rank = m.ringSlot;
-      }
+      const R = OUTER_RING_R * pileScale;
+      const activeSlot = active ? active.ringSlot : -1;
+      const N = PORTFOLIO.length - (activeSlot >= 0 ? 1 : 0);
+      const rank = (activeSlot < 0 || m.ringSlot < activeSlot) ? m.ringSlot : m.ringSlot - 1;
       const angle = (rank / N) * Math.PI * 2 + ringRotation + RING_ANGLE_OFFSET;
       out.copy(groupPull)
          .addScaledVector(_ringRight, Math.cos(angle) * R)
@@ -940,18 +949,31 @@
     const cam = { theta:0, phi:0.28, radius:6.8, dragging:false, lastX:0, lastY:0,
                   velTheta:0, velPhi:0, autoRotate:true, resumeTimer:null, locked:false };
 
-    // Real camera dolly toward the clicked marble while a case is open —
-    // "push into the marble with z-space" per the Figma "Transition" motion.
-    // camFrozenFwd snapshots the camera's exact view direction the instant
-    // the reveal starts (set in startOpen); camDolly (eased once per frame
-    // in animate()) pushes the camera forward along that frozen direction,
-    // on top of its (now-unmoving, since theta/phi stop updating) orbit
-    // position, while cam.locked separately keeps the camera's ORIENTATION
-    // frozen (no lookAt calls) the whole time, exactly as before this change
-    // — only the position now creeps forward and back.
-    const CAM_DOLLY_DIST = 2.8;
-    let camDolly = 0;
-    const camFrozenFwd = new THREE.Vector3(0, 0, -1);
+    // Reveal motion, in three stages:
+    //  1. launch  — the clicked marble grows and moves to the ring's own
+    //     center; the rest of the ring fills the gap it left behind
+    //     (computeRingTarget above already excludes the active marble).
+    //  2. recede  — the marble is pushed back in world-space while the
+    //     camera follows it back in lockstep (same offset applied to both,
+    //     so the marble holds its size/framing on screen) — the shell
+    //     dissolves over this same window, revealing the swirl/image, while
+    //     the rest of the ring (left behind, not moving) shrinks out of
+    //     view.
+    //  3. settle  — the marble eases from that receded spot over to its
+    //     resting position on the left (groupPull, shifted via
+    //     groupPullGoal) while the camera eases back to its normal,
+    //     undollied base and the case-study panel slides in from the right.
+    // Closing (see startClose/updateTransition's 'close' phase) reverses
+    // settle + recede in one pass: shell reforms, marble eases back toward
+    // ring-center, rest of the ring fades back in, then hands the marble
+    // back to normal ring physics. cam.locked keeps the camera's
+    // ORIENTATION frozen (no lookAt calls) throughout every stage — only
+    // the position moves, driven by camRecedeAmt below.
+    const RECEDE_DIST = 3.0;
+    let camRecedeAmt = 0; // 0 = camera at its normal base position, 1 = fully receded
+    let ringHideAmt  = 0; // 0 = rest of the ring fully visible, 1 = shrunk out of view
+    const camFrozenFwd   = new THREE.Vector3(0, 0, -1);
+    const camFrozenRight = new THREE.Vector3(1, 0, 0);
 
     const canvas = renderer.domElement;
     canvas.addEventListener('mousedown', e => {
@@ -1028,13 +1050,16 @@
       },
     };
 
-    const LAUNCH_S = 0.62, BREAK_S = 0.42, CLOSE_S = 0.6;
+    const LAUNCH_S = 0.62, RECEDE_S = 0.5, SETTLE_S = 0.55, CLOSE_S = 0.6;
     const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
 
-    let phase = 'idle'; // idle | launch | break | open | close
+    let phase = 'idle'; // idle | launch | recede | settle | open | close
     let active = null;
     let phaseStart = 0;
     const launchStart = new THREE.Vector3();
+    const recedeStart = new THREE.Vector3();
+    const settleStart = new THREE.Vector3();
+    const closeStart  = new THREE.Vector3();
 
     const csIndex     = document.getElementById('cs-index');
     const csCategory  = document.getElementById('cs-category');
@@ -1110,31 +1135,28 @@
       canvas.classList.remove('dragging');
       const fwd = new THREE.Vector3();
       camera.getWorldDirection(fwd);
-      // Snapshot the camera's exact view direction right now — the dolly
-      // (see camDolly, updated in animate()) pushes forward along this
-      // frozen direction for the rest of the reveal, while cam.locked
-      // (above) keeps the camera's orientation itself frozen throughout.
+      // Snapshot the camera's exact view direction and right vector right
+      // now — every later stage (recede's backward push, settle's leftward
+      // shift) moves the camera/marble relative to this frozen basis, while
+      // cam.locked (above) keeps the camera's orientation itself frozen
+      // throughout.
       camFrozenFwd.copy(fwd);
-      // Right vector of the (now frozen) camera — used to pull the rest of
-      // the ring clear of the panel, which covers roughly the right 43% of
-      // the screen once it's open.
-      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-      // Pushed almost entirely off-frame — only about half the ring stays on
-      // screen, hugging the left edge, well clear of the panel on the right.
-      // Scaled up from the original -4.0 to match the camera being pulled
-      // back farther (6.8 vs 4.8) for the ring formation, so it still lands
-      // on the same apparent screen-space position.
-      groupPullGoal.set(0, 0, 0).addScaledVector(right, -5.7);
+      camFrozenRight.setFromMatrixColumn(camera.matrixWorld, 0);
+      // Stage 1 (launch) targets dead-center — the ring's own live center —
+      // not the final left-shifted resting spot. That shift only happens
+      // once we reach stage 3 (settle), once the marble's alone in view.
+      groupPullGoal.set(0, 0, 0);
     }
     function startClose() {
       if (phase !== 'open') return;
       phase = 'close'; phaseStart = time;
+      closeStart.copy(active.pos);
       document.body.classList.remove('expanded');
       groupPullGoal.set(0, 0, 0);
     }
-    // No back button — clicking (desktop) or tapping (touch) the marble pile
-    // peeking in on the left edge while a case is open closes it. See the
-    // mouseup/touchend handlers below.
+    // The only way to close is the top-left back button (see #back-btn's
+    // click handler below) — the rest of the ring fades out of view while a
+    // case is open, so there's no marble pile left to click.
     window.addEventListener('keydown', e => { if (e.key === 'Escape') startClose(); });
 
     function updateTransition() {
@@ -1143,52 +1165,97 @@
       const el = time - phaseStart;
 
       if (phase === 'launch') {
+        // Stage 1: grow and move into the ring's own (live, still centered)
+        // middle — the rest of the ring is filling the gap left behind at
+        // the same time (computeRingTarget above), still fully visible.
         const t = Math.min(el / LAUNCH_S, 1);
         const e = easeInOut(t);
-        // Targets the ring's own (live, still-easing-left) center — "goes
-        // into the middle of the ring" — rather than a fixed point in front
-        // of the camera; the camera instead pushes forward to meet it (see
-        // the dolly in animate()'s camera block).
         m.pos.lerpVectors(launchStart, groupPull, e);
         m.vel.set(0, 0, 0);
         m.group.position.copy(m.pos);
         m.group.scale.setScalar(1 + e * 1.4); // grow to 2.4x
+        camRecedeAmt = 0;
+        ringHideAmt = 0;
         if (t >= 1) {
-          phase = 'break'; phaseStart = time;
+          recedeStart.copy(m.pos);
+          phase = 'recede'; phaseStart = time;
         }
         return;
       }
 
-      if (phase === 'break' || phase === 'close') {
-        const t = Math.min(el / (phase === 'break' ? BREAK_S : CLOSE_S), 1);
+      if (phase === 'recede') {
+        // Stage 2: marble and camera move backward together, in lockstep
+        // (same offset applied to both — see camRecedeAmt's use in
+        // animate()'s camera block), so the marble holds its size/framing
+        // on screen while the rest of the ring — left behind, not moving —
+        // shrinks out of view. The shell dissolves over this same window.
+        const t = Math.min(el / RECEDE_S, 1);
         const e = easeInOut(t);
-        const k = phase === 'break' ? e : 1 - e; // k: 0=whole shell, 1=broken open
+        camRecedeAmt = e;
+        ringHideAmt = e;
+        m.pos.copy(recedeStart).addScaledVector(camFrozenFwd, -RECEDE_DIST * e);
+        m.group.position.copy(m.pos);
+        m.outer.material.opacity = 1 - e;
+        m.outer.material.clearcoat = 0.4 * (1 - e);
+        m.innerGroup.scale.setScalar(1 - e);
+        if (t >= 1) {
+          settleStart.copy(m.pos);
+          // The marble's alone in view now — reveal the panel and set the
+          // leftward resting spot stage 3 eases it toward.
+          const idx = PORTFOLIO.findIndex(p => p.label === m.label) + 1;
+          csIndex.textContent = String(idx).padStart(2, '0');
+          scrambleInto(csCategory, `${String(idx).padStart(2,'0')} // ${m.label.toUpperCase()}`, 500);
+          scrambleInto(csTitle, m.label.toUpperCase(), 900);
+          const copy = CASE_COPY[m.label];
+          renderDesc((copy && copy.desc) || PLACEHOLDER_DESC);
+          renderGallery(copy && copy.images);
+          if (copy && copy.desc) {
+            if (copy.tag) { csTag.textContent = copy.tag; csTag.style.display = ''; }
+            else csTag.style.display = 'none';
+          } else {
+            csTag.textContent = PLACEHOLDER_TAG_TEXT; csTag.style.display = '';
+          }
+          document.body.classList.add('expanded'); // slides the fixed panel in — no page scroll involved
+          groupPullGoal.set(0, 0, 0).addScaledVector(camFrozenRight, -5.7);
+          phase = 'settle'; phaseStart = time;
+        }
+        return;
+      }
+
+      if (phase === 'settle') {
+        // Stage 3: ease from the receded spot over to the resting position
+        // on the left (groupPull, now easing toward its shifted goal) while
+        // the camera eases back to its normal, undollied base.
+        const t = Math.min(el / SETTLE_S, 1);
+        const e = easeInOut(t);
+        camRecedeAmt = 1 - e;
+        ringHideAmt = 1;
+        m.pos.lerpVectors(settleStart, groupPull, e);
+        m.group.position.copy(m.pos);
+        if (t >= 1) phase = 'open';
+        return;
+      }
+
+      if (phase === 'close') {
+        // Reverse of settle + recede in one pass: shell reforms, marble
+        // eases back toward the (live, re-centering) ring center, and the
+        // rest of the ring fades back in — camera stays at its normal base
+        // throughout (settle already brought it back before 'open').
+        const t = Math.min(el / CLOSE_S, 1);
+        const e = easeInOut(t);
+        const k = 1 - e; // 1 = fully open/dissolved, 0 = shell reformed
         m.outer.material.opacity = 1 - k;
         m.outer.material.clearcoat = 0.4 * (1 - k);
         m.innerGroup.scale.setScalar(1 - k);
-
-        if (phase === 'break') {
-          if (t >= 1) {
-            phase = 'open';
-            const idx = PORTFOLIO.findIndex(p => p.label === m.label) + 1;
-            csIndex.textContent = String(idx).padStart(2, '0');
-            scrambleInto(csCategory, `${String(idx).padStart(2,'0')} // ${m.label.toUpperCase()}`, 500);
-            scrambleInto(csTitle, m.label.toUpperCase(), 900);
-            const copy = CASE_COPY[m.label];
-            renderDesc((copy && copy.desc) || PLACEHOLDER_DESC);
-            renderGallery(copy && copy.images);
-            if (copy && copy.desc) {
-              if (copy.tag) { csTag.textContent = copy.tag; csTag.style.display = ''; }
-              else csTag.style.display = 'none';
-            } else {
-              csTag.textContent = PLACEHOLDER_TAG_TEXT; csTag.style.display = '';
-            }
-            document.body.classList.add('expanded'); // slides the fixed panel in — no page scroll involved
-          }
-        } else if (t >= 1) {
+        camRecedeAmt = 0;
+        ringHideAmt = k;
+        m.pos.lerpVectors(closeStart, groupPull, e);
+        m.group.position.copy(m.pos);
+        if (t >= 1) {
           m.scaleCurrent = m.group.scale.x; // let the normal hover lerp ease it back to 1
           m.vel.set((Math.random()-0.5)*0.6, 0.25, (Math.random()-0.5)*0.6);
           phase = 'idle'; active = null; cam.locked = false;
+          ringHideAmt = 0; camRecedeAmt = 0;
           cam.resumeTimer = setTimeout(() => { cam.autoRotate = true; }, 1200);
         }
         return;
@@ -1196,22 +1263,18 @@
       // phase === 'open': hold steady, nothing to animate
     }
 
-    // Click (not drag) on a portfolio marble starts the reveal.
+    // Click (not drag) on a portfolio marble starts the reveal. Closing is
+    // handled by the #back-btn click listener below, not by clicking here —
+    // the rest of the ring is faded out of view while a case is open.
     let downX = 0, downY = 0;
     canvas.addEventListener('mousedown', e => { downX = e.clientX; downY = e.clientY; });
     canvas.addEventListener('mouseup', e => {
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
-      if (phase === 'idle') {
-        raycaster.setFromCamera(mouse, camera);
-        const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
-        const m = allMarbles.find(mm => mm.outer === hit);
-        if (m && m.isPortfolio) startOpen(m);
-      } else if (phase === 'open') {
-        // No back button — clicking the marble pile goes back.
-        raycaster.setFromCamera(mouse, camera);
-        const hits = raycaster.intersectObjects(outerMeshes);
-        if (hits.find(h => h.object !== (active && active.outer))) startClose();
-      }
+      if (phase !== 'idle') return;
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
+      const m = allMarbles.find(mm => mm.outer === hit);
+      if (m && m.isPortfolio) startOpen(m);
     });
     let downTX = 0, downTY = 0;
     canvas.addEventListener('touchstart', e => {
@@ -1220,18 +1283,18 @@
     canvas.addEventListener('touchend', e => {
       const t = e.changedTouches[0];
       if (Math.hypot(t.clientX - downTX, t.clientY - downTY) > 8) return; // was a drag
-      if (phase === 'idle') {
-        raycaster.setFromCamera(mouse, camera);
-        const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
-        const m = allMarbles.find(mm => mm.outer === hit);
-        if (m && m.isPortfolio) startOpen(m);
-      } else if (phase === 'open') {
-        // No back button — tapping the marble pile goes back (this is the
-        // primary way to close on touch, since hover doesn't exist there).
-        raycaster.setFromCamera(mouse, camera);
-        const hits = raycaster.intersectObjects(outerMeshes);
-        if (hits.find(h => h.object !== (active && active.outer))) startClose();
-      }
+      if (phase !== 'idle') return;
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.intersectObjects(outerMeshes)[0]?.object;
+      const m = allMarbles.find(mm => mm.outer === hit);
+      if (m && m.isPortfolio) startOpen(m);
+    });
+
+    // Back button — the only way to close a case study now.
+    const backBtn = document.getElementById('back-btn');
+    backBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      startClose();
     });
 
     // ── HAND TRACKING — pinch a marble to grab it, release to throw ──
@@ -1544,12 +1607,9 @@
       groupPull.lerp(groupPullGoal, Math.min(dt * 2.2, 1)); // eases the ring's center sideways
       const pileScaleTarget = phase === 'idle' ? 1 : RING_OPEN_SCALE;
       pileScale += (pileScaleTarget - pileScale) * Math.min(dt * 5.5, 1); // eased resize/regroup of the ring
-      // Real camera push toward the opened marble (see the camera block
-      // below) — eases 0→1 as a case opens, back to 0 as it closes. Finishes
-      // retracting well before cam.resumeTimer lets auto-rotate resume, so
-      // there's no seam between the dolly-out and the orbit picking back up.
-      const camDollyTarget = phase === 'idle' ? 0 : 1;
-      camDolly += (camDollyTarget - camDolly) * Math.min(dt * 3.0, 1);
+      // camRecedeAmt and ringHideAmt are driven directly by updateTransition
+      // (below) since each phase already computes its own eased progress —
+      // no separate easing needed here, just read the current values.
       // Camera-facing basis for this frame's ring seats (one frame stale,
       // same as the beam-trail's camera axes below — imperceptible given how
       // slowly the camera orbits) plus the ring's own slow continuous spin.
@@ -1565,17 +1625,14 @@
         m.innerGroup.rotation.y += dt * 0.05;
       }
 
-      // Hover — reuse cached array, no allocation. Also live during 'open',
-      // purely for the pointer cursor / marble-puff feedback — clicking (or
-      // tapping) the pile peeking in on the left is what actually closes the
-      // case (see the mouseup/touchend handlers below), not just hovering.
-      // The opened marble's own shell is excluded from the hit test so
-      // lingering near the panel never lights it up.
+      // Hover — reuse cached array, no allocation. Only live while idle now;
+      // the rest of the ring is faded/shrunk out of view (and thus not
+      // meaningfully hoverable) for the whole reveal/panel-open/close span.
       raycaster.setFromCamera(mouse, camera);
       let hitObj = null;
-      if (!cam.dragging && (phase === 'idle' || phase === 'open')) {
+      if (!cam.dragging && phase === 'idle') {
         const hits = raycaster.intersectObjects(outerMeshes);
-        const first = hits.find(h => h.object !== (active && active.outer));
+        const first = hits[0];
         if (first) hitObj = first.object;
       }
 
@@ -1598,11 +1655,13 @@
           ? 1.14 - 0.4 * crushProgress // squash as the crush-to-open squeeze builds
           : (m.hovered ? 1.14 : 1.0);
         m.scaleCurrent += (m.scaleTarget - m.scaleCurrent) * 0.12;
-        m.group.scale.setScalar(m.scaleCurrent * pileScale);
+        // Non-active marbles shrink to nothing during recede/settle/open and
+        // grow back during close, per ringHideAmt (see updateTransition) —
+        // this is how "the other marbles go back... out of view" reads.
+        m.group.scale.setScalar(m.scaleCurrent * pileScale * (1 - ringHideAmt));
       }
       const idlePointer = phase === 'idle' && !cam.dragging && allMarbles.some(m => m.hovered && m.isPortfolio);
-      const openPointer = phase === 'open' && !!hitObj;
-      canvas.style.cursor = (idlePointer || openPointer) ? 'pointer' : '';
+      canvas.style.cursor = idlePointer ? 'pointer' : '';
 
       // Cursor world position + RGB trail
       updateCursorWorld();
@@ -1625,11 +1684,15 @@
       camera.position.x=cam.radius*Math.cos(cam.phi)*Math.sin(cam.theta);
       camera.position.y=cam.radius*Math.sin(cam.phi);
       camera.position.z=cam.radius*Math.cos(cam.phi)*Math.cos(cam.theta);
-      // Real push toward the opened marble — see camDolly's declaration and
-      // easing above. Zero while idle, so this is a no-op until a case opens.
-      camera.position.addScaledVector(camFrozenFwd, camDolly * CAM_DOLLY_DIST);
+      // Recede stage: camera retreats backward along its frozen view
+      // direction, in lockstep with the marble it's chasing (see
+      // updateTransition's 'recede' phase) — settle eases this back to 0
+      // before the panel finishes sliding in, so by 'open' the camera sits
+      // back at its normal, undollied base. Zero while idle, so this is a
+      // no-op until a case opens.
+      camera.position.addScaledVector(camFrozenFwd, -camRecedeAmt * RECEDE_DIST);
       // Orientation stays completely frozen the instant a case opens (no
-      // lookAt while locked) — only the position creeps forward and back.
+      // lookAt while locked) — only the position moves.
       if (!cam.locked) camera.lookAt(0,0,0);
 
       // Lights are fixed — no per-frame orbit math
