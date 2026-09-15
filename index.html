@@ -982,7 +982,7 @@
       },
     };
 
-    const LAUNCH_S = 0.62, BREAK_S = 0.30, CLOSE_S = 0.55;
+    const LAUNCH_S = 0.62, BREAK_S = 0.42, CLOSE_S = 0.6;
     const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
 
     let phase = 'idle'; // idle | launch | break | open | close
@@ -1109,7 +1109,8 @@
 
       if (phase === 'break' || phase === 'close') {
         const t = Math.min(el / (phase === 'break' ? BREAK_S : CLOSE_S), 1);
-        const k = phase === 'break' ? t : 1 - t; // k: 0=whole shell, 1=broken open
+        const e = easeInOut(t);
+        const k = phase === 'break' ? e : 1 - e; // k: 0=whole shell, 1=broken open
         m.outer.material.opacity = 1 - k;
         m.outer.material.clearcoat = 0.4 * (1 - k);
         m.innerGroup.scale.setScalar(1 - k);
@@ -1490,7 +1491,7 @@
       updateHandGrab(dt);
       groupPull.lerp(groupPullGoal, Math.min(dt * 2.2, 1)); // eases the pile's gravity well sideways
       const pileScaleTarget = phase === 'idle' ? 1 : PILE_SHRINK;
-      pileScale += (pileScaleTarget - pileScale) * Math.min(dt * 8, 1); // same easing speed as the render lerp below
+      pileScale += (pileScaleTarget - pileScale) * Math.min(dt * 5.5, 1); // eased shrink/regroup of the pile
       physicsStep(dt);
       updateTransition();
 
