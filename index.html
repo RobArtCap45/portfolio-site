@@ -314,8 +314,9 @@
     const scene  = new THREE.Scene();
     scene.background = new THREE.Color(0x08080e);
     const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.1, 200);
-    camera.position.set(0, 1, 4.8);
+    camera.position.set(0, 1, 6.8);
     camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(); // so the ring's camera-facing basis is valid on the very first frame
 
     // ── DUST PARTICLES — soft stars adrift in the dark void ──
     {
@@ -619,19 +620,26 @@
     ];
     const portfolioMarbles = allMarbles.filter(m => m.isPortfolio);
 
+    // Home-screen ring formation (per the Figma "New Home Screen" / Radial
+    // reference): the 8 portfolio marbles sit on an outer ring, the 5 small
+    // decorative marbles on a smaller concentric inner ring, both centered on
+    // groupPull and camera-facing so it always reads as a circle regardless
+    // of the auto-orbit angle. ringSlot is each marble's fixed seat in its
+    // ring's original order — see computeRingTarget below.
+    allMarbles.forEach((m, i) => {
+      if (i < PORTFOLIO.length) { m.ringTier = 'outer'; m.ringSlot = i; }
+      else { m.ringTier = 'inner'; m.ringSlot = i - PORTFOLIO.length; }
+    });
+
     // ── INIT POSITIONS ────────────────────────────────────────────
+    // Start clustered near the middle with a little jitter (so no two start
+    // exactly overlapping) and let the ring spring force below carry every
+    // marble out to its seat — the page-load equivalent of the Figma Radial
+    // frame's burst-into-formation motion.
     ;(function() {
-      const placed = [];
       for (const m of allMarbles) {
-        let p, tries=0;
-        do {
-          const r=1.6+Math.random()*2.2, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
-          p = new THREE.Vector3(r*Math.sin(ph)*Math.cos(th), r*Math.sin(ph)*Math.sin(th), r*Math.cos(ph));
-          tries++;
-        } while (tries<120 && placed.some(q=>p.distanceTo(q.pos)<m.radius+q.radius+0.08));
-        m.pos.copy(p);
-        m.vel.set((Math.random()-.5)*.4,(Math.random()-.5)*.4,(Math.random()-.5)*.4);
-        placed.push(m);
+        m.pos.set((Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3);
+        m.vel.set(0, 0, 0);
       }
     })();
 
@@ -708,10 +716,10 @@
     // dt is already small, so the extra subdivision 24fps needed for stability
     // isn't necessary here, which keeps the per-second physics cost from
     // scaling up 2.5× along with the frame rate.
-    const GRAVITY=7.0, DRAG=4.5, RESTITUTION=0.20, SUBSTEPS=1, BOUND_R=4.2;
+    const DRAG=4.5, RESTITUTION=0.20, SUBSTEPS=1;
     const COLLISION_SOUND_MIN = 0.7; // ignore gentle resting-pile jitter, only "real" hits make noise
 
-    // How much the pile shrinks (visually and physically) while a case is
+    // How much the ring shrinks (visually and physically) while a case is
     // open — shared by the physics packing below and the render-scale loop
     // in animate() so the collision spacing shrinks right along with the
     // marbles instead of leaving them looking spread out at the smaller size.
@@ -727,43 +735,65 @@
     // instantly while the marbles were still visually small, forcing an
     // abrupt one-frame shove apart).
     let pileScale = 1;
-    // Slow tangential nudge applied to the pile while shrunk, so it reads as
-    // a lazily tumbling handful of marbles instead of a static cluster —
-    // same idea as the idle camera's auto-rotate, but orbiting the marbles
-    // themselves around the pull point instead of moving the camera.
-    const ORBIT_OMEGA = 0.55;
 
-    // Where the pile's "gravity well" currently sits (groupPull) and where it's
-    // easing toward (groupPullGoal). Idle: the world origin, dead center. While a
-    // case study is open: nudged sideways (see startOpen/startClose below) so the
-    // marble cluster settles off to one side instead of sitting under the panel.
+    // ── RING FORMATION ──────────────────────────────────────────────
+    // Outer ring: the 8 portfolio marbles. Inner ring: the 5 small ones.
+    // Both are circles in the camera-facing plane (_ringRight/_ringUp, set
+    // once per frame in animate() from the camera's own right/up axes) so
+    // the formation always reads as a flat ring on screen no matter which
+    // way the idle auto-orbit is currently facing — matching the Figma
+    // "Radial" reference at any angle instead of just head-on.
+    const OUTER_RING_R = 2.35, INNER_RING_R = 0.85;
+    const RING_SPRING_K = 9.0; // how firmly each marble is pulled to its ring seat
+    const RING_ROT_SPEED = 0.05; // slow continuous spin, radians/sec
+    const RING_ANGLE_OFFSET = -Math.PI / 2; // seat 0 starts at the top, like the reference
+    let ringRotation = 0;
+    const _ringRight = new THREE.Vector3(1, 0, 0);
+    const _ringUp    = new THREE.Vector3(0, 1, 0);
+    const _ringTarget = new THREE.Vector3();
+
+    // Where the ring currently sits (groupPull) and where it's easing toward
+    // (groupPullGoal). Idle: the world origin, dead center. While a case
+    // study is open: nudged sideways (see startOpen/startClose below) so the
+    // ring settles off to one side instead of sitting under the panel.
     const groupPull = new THREE.Vector3(0, 0, 0);
     const groupPullGoal = new THREE.Vector3(0, 0, 0);
     const _gravDelta = new THREE.Vector3();
 
+    // Each non-active marble's target seat on its ring for this frame. The
+    // opened marble (if any) is skipped when assigning outer-ring seats, so
+    // the remaining 7 smoothly re-space themselves to fill the gap it left —
+    // and settle right back into the full 8-seat ring once it closes.
+    function computeRingTarget(m, out) {
+      const isOuter = m.ringTier === 'outer';
+      const R = (isOuter ? OUTER_RING_R : INNER_RING_R) * pileScale;
+      let N, rank;
+      if (isOuter) {
+        const activeSlot = (active && active.ringTier === 'outer') ? active.ringSlot : -1;
+        N = PORTFOLIO.length - (activeSlot >= 0 ? 1 : 0);
+        rank = (activeSlot < 0 || m.ringSlot < activeSlot) ? m.ringSlot : m.ringSlot - 1;
+      } else {
+        N = SMALLS.length;
+        rank = m.ringSlot;
+      }
+      const angle = (rank / N) * Math.PI * 2 + ringRotation + RING_ANGLE_OFFSET;
+      out.copy(groupPull)
+         .addScaledVector(_ringRight, Math.cos(angle) * R)
+         .addScaledVector(_ringUp,    Math.sin(angle) * R);
+    }
+
     function physicsStep(dt) {
       const sub=dt/SUBSTEPS;
-      // Pack the pile tighter to match its shrunk render size (rScale tracks
+      // Pack the ring tighter to match its shrunk render size (rScale tracks
       // the same eased pileScale the render loop uses — see its declaration
-      // above), and give it a slow orbital drift whenever a case is open
-      // (or opening/closing).
+      // above).
       const rScale = pileScale;
-      const orbiting = phase !== 'idle';
       for (let s=0; s<SUBSTEPS; s++) {
         for (const m of allMarbles) {
           if (m === active || m === grabbedMarble) continue; // owned by reveal transition or hand-grab
-          _gravDelta.copy(m.pos).sub(groupPull);
-          const len=_gravDelta.length();
-          if (len>0.001) m.vel.addScaledVector(_gravDelta,-GRAVITY*sub/len);
-          const maxR=BOUND_R-m.radius*rScale;
-          if (len>maxR) m.vel.addScaledVector(_gravDelta,-(len-maxR)*14*sub/len);
-          if (orbiting) {
-            // Tangential nudge around the vertical axis: cross(up, _gravDelta),
-            // scaled directly by _gravDelta's own magnitude, so it's a
-            // constant angular speed rather than a constant linear one.
-            m.vel.x += _gravDelta.z * ORBIT_OMEGA * sub;
-            m.vel.z += -_gravDelta.x * ORBIT_OMEGA * sub;
-          }
+          computeRingTarget(m, _ringTarget);
+          _gravDelta.copy(_ringTarget).sub(m.pos);
+          m.vel.addScaledVector(_gravDelta, RING_SPRING_K * sub);
           m.vel.multiplyScalar(1-DRAG*sub);
           const spd=m.vel.length(); if(spd>9) m.vel.multiplyScalar(9/spd);
         }
@@ -905,7 +935,7 @@
       mouse.y=-(e.clientY/innerHeight)*2+1;
     });
 
-    const cam = { theta:0, phi:0.28, radius:4.8, dragging:false, lastX:0, lastY:0,
+    const cam = { theta:0, phi:0.28, radius:6.8, dragging:false, lastX:0, lastY:0,
                   velTheta:0, velPhi:0, autoRotate:true, resumeTimer:null, locked:false };
     const canvas = renderer.domElement;
     canvas.addEventListener('mousedown', e => {
@@ -1074,9 +1104,12 @@
       // behind the panel (with the panel's shadow falling across it), not
       // dodging it.
       launchTarget.copy(camera.position).addScaledVector(fwd, 3.1);
-      // Pushed almost entirely off-frame — only about half the pile stays on
+      // Pushed almost entirely off-frame — only about half the ring stays on
       // screen, hugging the left edge, well clear of the panel on the right.
-      groupPullGoal.set(0, 0, 0).addScaledVector(right, -4.0);
+      // Scaled up from the original -4.0 to match the camera being pulled
+      // back farther (6.8 vs 4.8) for the ring formation, so it still lands
+      // on the same apparent screen-space position.
+      groupPullGoal.set(0, 0, 0).addScaledVector(right, -5.7);
     }
     function startClose() {
       if (phase !== 'open') return;
@@ -1489,9 +1522,15 @@
       time += dt;
 
       updateHandGrab(dt);
-      groupPull.lerp(groupPullGoal, Math.min(dt * 2.2, 1)); // eases the pile's gravity well sideways
+      groupPull.lerp(groupPullGoal, Math.min(dt * 2.2, 1)); // eases the ring's center sideways
       const pileScaleTarget = phase === 'idle' ? 1 : PILE_SHRINK;
-      pileScale += (pileScaleTarget - pileScale) * Math.min(dt * 5.5, 1); // eased shrink/regroup of the pile
+      pileScale += (pileScaleTarget - pileScale) * Math.min(dt * 5.5, 1); // eased shrink/regroup of the ring
+      // Camera-facing basis for this frame's ring seats (one frame stale,
+      // same as the beam-trail's camera axes below — imperceptible given how
+      // slowly the camera orbits) plus the ring's own slow continuous spin.
+      _ringRight.setFromMatrixColumn(camera.matrixWorld, 0);
+      _ringUp.setFromMatrixColumn(camera.matrixWorld, 1);
+      ringRotation += dt * RING_ROT_SPEED;
       physicsStep(dt);
       updateTransition();
 
