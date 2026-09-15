@@ -953,14 +953,15 @@
     //  1. launch  — the clicked marble grows and moves to the ring's own
     //     center; the rest of the ring fills the gap it left behind
     //     (computeRingTarget above already excludes the active marble).
-    //  2. recede  — the marble is pushed back in world-space while the
-    //     camera follows it back in lockstep (same offset applied to both,
-    //     so the marble holds its size/framing on screen) — the shell
-    //     dissolves over this same window, revealing the swirl/image, while
-    //     the rest of the ring (left behind, not moving) shrinks out of
-    //     view.
-    //  3. settle  — the marble eases from that receded spot over to its
-    //     resting position on the left (groupPull, shifted via
+    //  2. recede  — the marble is pushed forward in world-space, deeper into
+    //     the scene, with the camera pushing forward right along with it in
+    //     lockstep (same offset applied to both, so the marble holds its
+    //     size/framing on screen) — the camera drives straight through
+    //     where the rest of the ring is sitting, leaving it behind out of
+    //     view (see ringHideAmt below). The shell dissolves over this same
+    //     window, revealing the swirl/image.
+    //  3. settle  — the marble eases from that pushed-forward spot over to
+    //     its resting position on the left (groupPull, shifted via
     //     groupPullGoal) while the camera eases back to its normal,
     //     undollied base and the case-study panel slides in from the right.
     // Closing (see startClose/updateTransition's 'close' phase) reverses
@@ -970,7 +971,7 @@
     // ORIENTATION frozen (no lookAt calls) throughout every stage — only
     // the position moves, driven by camRecedeAmt below.
     const RECEDE_DIST = 3.0;
-    let camRecedeAmt = 0; // 0 = camera at its normal base position, 1 = fully receded
+    let camRecedeAmt = 0; // 0 = camera at its normal base position, 1 = pushed all the way forward
     let ringHideAmt  = 0; // 0 = rest of the ring fully visible, 1 = shrunk out of view
     const camFrozenFwd   = new THREE.Vector3(0, 0, -1);
     const camFrozenRight = new THREE.Vector3(1, 0, 0);
@@ -1184,16 +1185,18 @@
       }
 
       if (phase === 'recede') {
-        // Stage 2: marble and camera move backward together, in lockstep
+        // Stage 2: marble and camera push forward together, in lockstep
         // (same offset applied to both — see camRecedeAmt's use in
         // animate()'s camera block), so the marble holds its size/framing
-        // on screen while the rest of the ring — left behind, not moving —
-        // shrinks out of view. The shell dissolves over this same window.
+        // on screen while the camera drives straight through the ring —
+        // the rest of it, still sitting back where it was, ends up behind
+        // the camera and out of view. The shell dissolves over this same
+        // window.
         const t = Math.min(el / RECEDE_S, 1);
         const e = easeInOut(t);
         camRecedeAmt = e;
         ringHideAmt = e;
-        m.pos.copy(recedeStart).addScaledVector(camFrozenFwd, -RECEDE_DIST * e);
+        m.pos.copy(recedeStart).addScaledVector(camFrozenFwd, RECEDE_DIST * e);
         m.group.position.copy(m.pos);
         m.outer.material.opacity = 1 - e;
         m.outer.material.clearcoat = 0.4 * (1 - e);
@@ -1223,9 +1226,9 @@
       }
 
       if (phase === 'settle') {
-        // Stage 3: ease from the receded spot over to the resting position
-        // on the left (groupPull, now easing toward its shifted goal) while
-        // the camera eases back to its normal, undollied base.
+        // Stage 3: ease from the pushed-forward spot over to the resting
+        // position on the left (groupPull, now easing toward its shifted
+        // goal) while the camera eases back to its normal, undollied base.
         const t = Math.min(el / SETTLE_S, 1);
         const e = easeInOut(t);
         camRecedeAmt = 1 - e;
@@ -1684,13 +1687,13 @@
       camera.position.x=cam.radius*Math.cos(cam.phi)*Math.sin(cam.theta);
       camera.position.y=cam.radius*Math.sin(cam.phi);
       camera.position.z=cam.radius*Math.cos(cam.phi)*Math.cos(cam.theta);
-      // Recede stage: camera retreats backward along its frozen view
-      // direction, in lockstep with the marble it's chasing (see
-      // updateTransition's 'recede' phase) — settle eases this back to 0
-      // before the panel finishes sliding in, so by 'open' the camera sits
-      // back at its normal, undollied base. Zero while idle, so this is a
-      // no-op until a case opens.
-      camera.position.addScaledVector(camFrozenFwd, -camRecedeAmt * RECEDE_DIST);
+      // Recede stage: camera pushes forward along its frozen view
+      // direction, in lockstep with the marble it's chasing — driving
+      // straight through the ring (see updateTransition's 'recede' phase)
+      // — settle eases this back to 0 before the panel finishes sliding in,
+      // so by 'open' the camera sits back at its normal, undollied base.
+      // Zero while idle, so this is a no-op until a case opens.
+      camera.position.addScaledVector(camFrozenFwd, camRecedeAmt * RECEDE_DIST);
       // Orientation stays completely frozen the instant a case opens (no
       // lookAt while locked) — only the position moves.
       if (!cam.locked) camera.lookAt(0,0,0);
