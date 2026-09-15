@@ -1081,16 +1081,22 @@
       },
     };
 
-    const LAUNCH_S = 0.62, RECEDE_S = 0.5, SETTLE_S = 0.55, CLOSE_S = 0.6;
+    const LAUNCH_S = 0.62, RECEDE_S = 0.5, SETTLE_S = 0.55;
+    // Closing runs as its own three stages, per the requested motion: the
+    // clicked marble goes back to the middle first, then the rest of the
+    // ring comes back in, then the clicked marble goes back into the ring.
+    const CLOSE_RETURN_S = 0.5, CLOSE_RING_S = 0.5, CLOSE_REJOIN_S = 0.55;
     const easeInOut = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
 
-    let phase = 'idle'; // idle | launch | recede | settle | open | close
+    let phase = 'idle'; // idle | launch | recede | settle | open | closeReturn | closeRing | closeRejoin
     let active = null;
     let phaseStart = 0;
     const launchStart = new THREE.Vector3();
     const recedeStart = new THREE.Vector3();
     const settleStart = new THREE.Vector3();
     const closeStart  = new THREE.Vector3();
+    const rejoinStart = new THREE.Vector3();
+    let   rejoinScaleStart = 1;
 
     const csIndex     = document.getElementById('cs-index');
     const csCategory  = document.getElementById('cs-category');
@@ -1190,7 +1196,7 @@
     }
     function startClose() {
       if (phase !== 'open') return;
-      phase = 'close'; phaseStart = time;
+      phase = 'closeReturn'; phaseStart = time;
       closeStart.copy(active.pos);
       document.body.classList.remove('expanded');
       groupPullGoal.set(0, 0, 0);
@@ -1279,23 +1285,62 @@
         return;
       }
 
-      if (phase === 'close') {
-        // Reverse of settle + recede in one pass: shell reforms, marble
-        // eases back toward the (live, re-centering) ring center, and the
-        // rest of the ring fades back in — camera stays at its normal base
-        // throughout (settle already brought it back before 'open').
-        const t = Math.min(el / CLOSE_S, 1);
+      if (phase === 'closeReturn') {
+        // Close stage 1: the clicked marble eases back to the ring's own
+        // (live, re-centering) middle, alone — the rest of the ring is
+        // still out of view — while its shell reforms and the panel slides
+        // away. Camera stays at its normal base the whole time (settle
+        // already brought it back before 'open').
+        const t = Math.min(el / CLOSE_RETURN_S, 1);
         const e = easeInOut(t);
-        const k = 1 - e; // 1 = fully open/dissolved, 0 = shell reformed
-        m.outer.material.opacity = 1 - k;
-        m.outer.material.clearcoat = 0.4 * (1 - k);
-        m.innerGroup.scale.setScalar(1 - k);
+        m.outer.material.opacity = e;
+        m.outer.material.clearcoat = 0.4 * e;
+        m.innerGroup.scale.setScalar(e);
         camRecedeAmt = 0;
-        ringHideAmt = k;
+        ringHideAmt = 1;
         m.pos.lerpVectors(closeStart, groupPull, e);
         m.group.position.copy(m.pos);
         if (t >= 1) {
-          m.scaleCurrent = m.group.scale.x; // let the normal hover lerp ease it back to 1
+          phase = 'closeRing'; phaseStart = time;
+        }
+        return;
+      }
+
+      if (phase === 'closeRing') {
+        // Close stage 2: the rest of the ring flies back in from off-screen
+        // while the reformed marble waits, centered.
+        const t = Math.min(el / CLOSE_RING_S, 1);
+        const e = easeInOut(t);
+        camRecedeAmt = 0;
+        ringHideAmt = 1 - e;
+        m.pos.copy(groupPull);
+        m.group.position.copy(m.pos);
+        if (t >= 1) {
+          rejoinStart.copy(m.pos);
+          rejoinScaleStart = m.group.scale.x;
+          phase = 'closeRejoin'; phaseStart = time;
+        }
+        return;
+      }
+
+      if (phase === 'closeRejoin') {
+        // Close stage 3: the marble shrinks back down to its normal size
+        // and eases from the center into its own seat on the (now fully
+        // re-formed) ring, then gets handed back to normal ring physics.
+        const t = Math.min(el / CLOSE_REJOIN_S, 1);
+        const e = easeInOut(t);
+        camRecedeAmt = 0;
+        ringHideAmt = 0;
+        const angle = (m.ringSlot / PORTFOLIO.length) * Math.PI * 2 + ringRotation + RING_ANGLE_OFFSET;
+        const R = OUTER_RING_R * pileScale;
+        _ringTarget.copy(groupPull)
+          .addScaledVector(_ringRight, Math.cos(angle) * R)
+          .addScaledVector(_ringUp,    Math.sin(angle) * R);
+        m.pos.lerpVectors(rejoinStart, _ringTarget, e);
+        m.group.position.copy(m.pos);
+        m.group.scale.setScalar(rejoinScaleStart + (1 - rejoinScaleStart) * e);
+        if (t >= 1) {
+          m.scaleCurrent = 1; // hover-lerp takes over cleanly at the normal size
           m.vel.set((Math.random()-0.5)*0.6, 0.25, (Math.random()-0.5)*0.6);
           phase = 'idle'; active = null; cam.locked = false;
           ringHideAmt = 0; camRecedeAmt = 0;
