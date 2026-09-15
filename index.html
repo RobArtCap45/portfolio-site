@@ -554,7 +554,10 @@
       // Outer glass shell — true refraction via `transmission` so light
       // actually bends through the marble, not just a reflective sheen.
       const outer = new THREE.Mesh(
-        new THREE.SphereGeometry(def.r, 24, 24),
+        // 32 segments (was 24) — marbles now get blown up several times
+        // their base size during the reveal/fly-past, and low-poly facets
+        // that were invisible at rest become visible flat panels up close.
+        new THREE.SphereGeometry(def.r, 32, 32),
         new THREE.MeshPhysicalMaterial({
           color:       0xffffff,
           metalness:   0,
@@ -575,7 +578,7 @@
       // Swirl sphere — coloured backdrop for ALL marbles
       const innerGroup = new THREE.Group();
       const inner = new THREE.Mesh(
-        new THREE.SphereGeometry(def.r * 0.82, 28, 28),
+        new THREE.SphereGeometry(def.r * 0.82, 32, 32), // was 28 — see the outer shell's segment-count note above
         new THREE.ShaderMaterial({
           uniforms: {
             uC1:   { value: new THREE.Color(def.c1) },
@@ -978,11 +981,18 @@
     // ringHideAmt: they balloon up (RING_FLY_GROW), get pushed toward the
     // viewer along the camera's frozen forward axis (RING_FLY_TOWARD — big
     // enough that they end up behind the camera's own forward-pushed
-    // position, so they fall outside the view frustum), and scatter
-    // outward a bit (RING_FLY_OUTWARD) so they don't all fly the same line.
-    const RING_FLY_GROW    = 3.2;
-    const RING_FLY_TOWARD  = 7.0;
-    const RING_FLY_OUTWARD = 1.8;
+    // position, so they fall outside the view frustum), and scatter outward
+    // (RING_FLY_OUTWARD) so they don't all fly the same line as the camera.
+    // The camera is pushing forward along that exact same axis at the same
+    // time (see camRecedeAmt), so a flying marble's depth and the camera's
+    // depth are mathematically guaranteed to cross at some point during the
+    // transition — the outward scatter is what has to keep them apart at
+    // that moment, not the "toward" distance. It's front-loaded (sqrt, in
+    // the per-frame use below) specifically so it's already mostly done by
+    // the time that crossing happens, well before the marble's grown huge.
+    const RING_FLY_GROW    = 2.2;
+    const RING_FLY_TOWARD  = 5.5;
+    const RING_FLY_OUTWARD = 4.5;
 
     // Open-state screen layout: the case-study panel takes PANEL_WIDTH_FRAC
     // of the screen (must match #case-content's CSS width above), leaving
@@ -1753,9 +1763,17 @@
         if (ringHideAmt > 0) {
           _v.copy(m.pos).sub(groupPull); // this marble's own radial direction on the ring
           if (_v.lengthSq() < 1e-6) _v.set(1, 0, 0); else _v.normalize();
+          // The outward scatter is front-loaded (sqrt) relative to the
+          // toward-viewer push (linear) — it needs to have cleared sideways
+          // well before the marble's depth crosses the camera's own
+          // (also-moving) depth, otherwise a giant nearby low-poly sphere
+          // can end up right next to — or wrapped around — the camera for a
+          // frame, which reads as a chunk of flat color clipping through
+          // whatever's actually in view.
+          const outwardT = Math.sqrt(ringHideAmt);
           m.group.position.copy(m.pos)
             .addScaledVector(camFrozenFwd, -RING_FLY_TOWARD * ringHideAmt)  // toward the viewer
-            .addScaledVector(_v, RING_FLY_OUTWARD * ringHideAmt);           // scatter outward too
+            .addScaledVector(_v, RING_FLY_OUTWARD * outwardT);              // scatter outward, fast
         }
       }
       const idlePointer = phase === 'idle' && !cam.dragging && allMarbles.some(m => m.hovered && m.isPortfolio);
