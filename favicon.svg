@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="234.5 120 161 161">
+  <!-- personal logo mark (Figma: Personal-Logo, Frame 1), rebuilt as vectors -->
+  <defs>
+    <clipPath id="l"><rect x="266" y="141" width="50" height="76"/></clipPath>
+    <clipPath id="r"><rect x="321" y="141" width="52" height="76"/></clipPath>
+  </defs>
+  <rect x="252" y="124" width="126" height="153" fill="#111"/>
+  <rect x="264" y="128" width="112" height="9" fill="#fff"/>
+  <rect x="266" y="141" width="50" height="76" fill="#fffb89"/>
+  <rect x="321" y="141" width="52" height="76" fill="#fffb89"/>
+  <circle cx="315.5" cy="180.5" r="10.5" fill="#111" clip-path="url(#l)"/>
+  <circle cx="370.5" cy="180.5" r="10.5" fill="#111" clip-path="url(#r)"/>
+  <g fill="#fff">
+    <rect x="267" y="221" width="13" height="29"/>
+    <rect x="285" y="221" width="13" height="29"/>
+    <rect x="303" y="221" width="13" height="29"/>
+    <rect x="321" y="221" width="13" height="29"/>
+    <rect x="339" y="221" width="13" height="29"/>
+    <rect x="357" y="221" width="15" height="29"/>
+    <rect x="264" y="255" width="112" height="17"/>
+  </g>
+</svg>
