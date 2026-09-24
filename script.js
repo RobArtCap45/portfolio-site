@@ -77,7 +77,8 @@
     {
       title: 'Pizza Wizard', cat: 'UX/UI — Ordering kiosk', img: 'PizaaWizard-transparent.png', fit: 'contain',
       desc: [
-        "A self-serve ordering kiosk designed end to end for Pizza Wizard, a pizza shop whose mascot the entire interface is built around, right down to the copy. Menu items lean into the bit too: pies named “Big Dodge Ram” and “Jelly Bean Broker” sit next to loyalty perks pitched as staying on the wizard's good side, and a 100-item cart cap exists specifically so the kitchen (the wizard) doesn't have to throw trays at anyone.",
+        "Project Time: 2 months",
+        "Client: Pizza Wizard",
         "Research started at a real installed kiosk, Shake Shack, walking the entire order-to-checkout flow and scoring it against Nielsen's 10 usability heuristics to see what held up and what didn't. That audit set the baseline before a single screen got drawn: what actually makes a touchscreen ordering flow fast, versus what just looks fast.",
         "From there the project moved through user flows and wireframes into a full UI: guest checkout for people who just want to order, versus a phone-number-plus-SMS-code account for loyalty points and repeat orders; a build-your-own pizza flow with every topping exposed, against a lighter add/remove flow for pre-built pies and sides; and an idle-timeout countdown that resets the kiosk if nobody's using it.",
         "The checkout screen folds in upsells styled as menu-native “Wizard Specials” rather than generic promos, plus gift cards, promo codes, and a points-based discount (the kind of revenue-side detail that's easy to skip in a school project but is half of why a business would actually want a kiosk). A 4-month solo UX project, research through final screens.",
