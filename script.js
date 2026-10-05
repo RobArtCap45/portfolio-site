@@ -75,31 +75,208 @@
   // ── PROJECTS ─────────────────────────────────────────────────
   const PROJECTS = [
     {
-      title: 'Pizza Wizard', cat: 'UX/UI — Ordering kiosk', img: 'PizaaWizard-transparent.png', fit: 'contain',
-      desc: [
-        "Project Time: 2 months",
-        "Client: Pizza Wizard",
-        "Research started at a real installed kiosk, Shake Shack, walking the entire order-to-checkout flow and scoring it against Nielsen's 10 usability heuristics to see what held up and what didn't. That audit set the baseline before a single screen got drawn: what actually makes a touchscreen ordering flow fast, versus what just looks fast.",
-        "From there the project moved through user flows and wireframes into a full UI: guest checkout for people who just want to order, versus a phone-number-plus-SMS-code account for loyalty points and repeat orders; a build-your-own pizza flow with every topping exposed, against a lighter add/remove flow for pre-built pies and sides; and an idle-timeout countdown that resets the kiosk if nobody's using it.",
-        "The checkout screen folds in upsells styled as menu-native “Wizard Specials” rather than generic promos, plus gift cards, promo codes, and a points-based discount (the kind of revenue-side detail that's easy to skip in a school project but is half of why a business would actually want a kiosk). A 4-month solo UX project, research through final screens.",
+      title: 'Pizza Wizard', cat: 'UX/UI — Ordering kiosk', img: 'pw-logo.png', fit: 'contain',
+      bg: 'pw-bg.png',   // brand pattern behind the logo in the case study
+      // Case study, top to bottom. Each section: title, body (paragraphs), optional
+      // items (label + text rows), optional images. Images are either a file —
+      // { src: 'file.png', caption: '…' } — or a placeholder box — { ph: 'what goes here' }.
+      // Add `ratio: '16/9'` to a placeholder to change its shape; `cols: 2` puts a section's images side by side.
+      sections: [
+        {
+          title: 'The Brief',
+          body: ["Design a self-serve ordering kiosk for a brand."],
+          images: [{ ph: 'Pizza Wizard kiosk / brand hero', ratio: '16/9' }],
+        },
+        {
+          title: 'Brainstorm',
+          body: ["I started with research at a real, installed kiosk, walking the entire order-to-checkout flow and scoring it against Nielsen's 10 usability heuristics to see what held up and what didn't. That audit set the baseline before a single screen was drawn: what actually makes a touchscreen ordering flow fast, versus what just looks fast."],
+          images: [{ ph: 'Heuristic audit of the existing kiosk' }],
+        },
+        {
+          title: 'Timeline',
+          body: [{ ph: 'Timeline text: phases and how long each took.' }],
+          images: [{ ph: 'Project timeline', ratio: '16/5' }],
+        },
+        {
+          title: 'Scope',
+          body: ["Everything needed to make this kiosk work."],
+          items: [
+            ['Hardware', "I simulated what the kiosk would look like and where it would be placed, based on customer flow."],
+            ['Content', "I used Pizza Wizard's current menu and items, and added restrictions and limits on orders."],
+            ['Functionality', "I researched the user flow, including accessibility, item removal, and error prevention."],
+          ],
+          images: [{ ph: 'Kiosk placement / customer flow in the restaurant' }],
+        },
+        {
+          title: 'Workflow',
+          body: ["I mapped out the user's journey through the kiosk."],
+          images: [{ ph: 'User journey map', ratio: '16/9' }],
+        },
+        {
+          title: 'Mockups',
+          items: [
+            ['Physical', "I modeled every element to scale to get a better sense of sizing."],
+            ['Virtual', "I made a virtual mockup to see how the kiosk might look in the restaurant."],
+          ],
+          cols: 2,
+          images: [{ ph: 'Physical mockup, to scale', ratio: '3/4' }, { ph: 'Virtual mockup in the restaurant', ratio: '3/4' }],
+        },
+        {
+          title: 'Wireframes',
+          body: ["I laid out the user flow and the features users can interact with."],
+          images: [{ ph: 'Wireframes', ratio: '16/9' }],
+        },
+        {
+          title: 'Style Guide',
+          body: ["A guide to how the kiosk is styled, built on a design system with annotations for every detail."],
+          images: [{ ph: 'Style guide / design system', ratio: '16/9' }],
+        },
+        {
+          title: 'Final Design',
+          images: [{ ph: 'Final design screens', ratio: '16/9' }],
+        },
+        {
+          title: 'Reflection',
+          body: [
+            "Effective UX is built on comprehensive systems that balance creativity, accessibility, and real-world constraints.",
+            "As a designer, this project taught me how to adapt. It pushed me to think critically about how people interact with digital kiosks in public spaces and retail settings, and about the limitations different users bring with them. I explored everything from systems thinking and UX workflow logic to visual hierarchy, accessibility, and motion as a storytelling tool.",
+            "This project challenged me to design a kiosk experience that was imaginative, functional, and grounded in real-world constraints. Along the way, I deepened my understanding of how to shape user flows, design with intent, and build systems that feel cohesive from start to finish. Through every stage of research, ideation, documentation, and refinement, I kept the end user in mind. In the end, it was each step of the process, not just the polished outcome, that taught me the most.",
+          ],
+        },
       ],
-      images: ['pw-item-select.png', 'pw-menu.png'],
     },
     {
       title: 'Mofuda', cat: 'Interactive — Virtual pet', img: 'mofuda.webp', fit: 'contain',
-      desc: "Mofuda is a virtual pet in the spirit of a Tamagotchi. The handheld is a carved-wood body with a single round green button, leaf-and-blossom etching, and a paper tag on a loop; its screen runs a 3D game where you look after a bear in a red daruma suit, with a health meter, sound, and a home button.",
+      sections: [
+        {
+          title: 'Overview', layout: 'statement',
+          body: ["Mofuda is a virtual pet in the spirit of a Tamagotchi."],
+        },
+        {
+          title: 'The Object', layout: 'split',
+          body: ["The handheld is a carved-wood body with a single round green button, leaf-and-blossom etching, and a paper tag on a loop."],
+          images: [{ ph: 'Handheld: front and back', ratio: '4/5' }],
+        },
+        {
+          title: 'The Game', layout: 'media-first', cols: 3,
+          images: [{ ph: 'Game screen: the bear', ratio: '3/4' }, { ph: 'Health meter', ratio: '3/4' }, { ph: 'Home screen', ratio: '3/4' }],
+          body: ["Its screen runs a 3D game where you look after a bear in a red daruma suit, with a health meter, sound, and a home button."],
+        },
+        {
+          title: 'Process', cols: 2,
+          body: [{ ph: 'Process text: sketches, modeling the body, building the game.' }],
+          images: [{ ph: 'Sketches' }, { ph: 'Prototype / build' }],
+        },
+        {
+          title: 'Reflection',
+          body: [{ ph: 'Reflection text: what you learned making Mofuda.' }],
+        },
+      ],
     },
     {
       title: 'Digital ID', cat: 'UX/UI — Mobile app', img: 'digital-id.png', fit: 'contain',
-      desc: "A digital driver's licence for the phone. The holder's photo and name lead the screen, with licence number, class, restrictions, and endorsements grouped underneath, then personal details and signature — and tabs to switch between the ID itself, a scannable barcode, and age verification.",
+      sections: [
+        {
+          title: 'Overview', layout: 'statement',
+          body: ["A digital driver's licence for the phone."],
+        },
+        {
+          title: 'Research',
+          body: [{ ph: 'Research text: who uses it, where, and what a physical licence gets wrong.' }],
+          images: [{ ph: 'Research / existing licences', ratio: '16/9' }],
+        },
+        {
+          title: 'Hierarchy', layout: 'split',
+          body: ["The holder's photo and name lead the screen, with licence number, class, restrictions, and endorsements grouped underneath, then personal details and signature."],
+          images: [{ ph: 'ID screen', ratio: '9/16' }],
+        },
+        {
+          title: 'Three Tabs', cols: 3,
+          items: [
+            ['ID', "The licence itself."],
+            ['Barcode', "A scannable barcode."],
+            ['Age check', "Age verification."],
+          ],
+          images: [{ ph: 'ID tab', ratio: '9/16' }, { ph: 'Barcode tab', ratio: '9/16' }, { ph: 'Age verification tab', ratio: '9/16' }],
+        },
+        {
+          title: 'Final Design', layout: 'media-first',
+          images: [{ ph: 'Final screens', ratio: '16/9' }],
+          body: [{ ph: 'Final design text.' }],
+        },
+        {
+          title: 'Reflection',
+          body: [{ ph: 'Reflection text.' }],
+        },
+      ],
     },
     {
       title: 'Bacteria Per Pixel', cat: 'Graphic — Image', img: 'bacteria-per-pixel.webp',
-      desc: "Bacteria Per Pixel is a graphic piece built from bacteria: the image is broken into flat acid-green, white, and black shapes, with lines from a bacterial strain list — species names and culture-collection numbers — set through it as texture.",
+      sections: [
+        {
+          title: 'Overview', layout: 'statement',
+          body: ["Bacteria Per Pixel is a graphic piece built from bacteria."],
+        },
+        {
+          title: 'The Piece', layout: 'media-first',
+          images: [{ src: 'bacteria-per-pixel.webp', caption: 'Bacteria Per Pixel, full image.' }],
+          body: [{ ph: 'Concept text: where the idea came from.' }],
+        },
+        {
+          title: 'Form', layout: 'split',
+          body: ["The image is broken into flat acid-green, white, and black shapes."],
+          images: [{ ph: 'Colour / shape breakdown', ratio: '1/1' }],
+        },
+        {
+          title: 'Type as Texture', cols: 2,
+          body: ["Lines from a bacterial strain list, species names and culture-collection numbers, are set through it as texture."],
+          images: [{ ph: 'Detail: strain list type', ratio: '1/1' }, { ph: 'Detail: culture numbers', ratio: '1/1' }],
+        },
+        {
+          title: 'Process',
+          body: [{ ph: 'Process text: tools, iterations, print or screen output.' }],
+          images: [{ ph: 'Process / iterations', ratio: '16/9' }],
+        },
+      ],
     },
     {
       title: 'Hanafuda Cards', cat: 'Graphic — Card deck', img: 'Darumaoslo.png', fit: 'contain',
-      desc: "A hanafuda-inspired reimagining of the standard 52-card deck. Each suit is re-skinned around a Japanese floral motif — cherry blossom, plum blossom, fern — in place of the usual clubs and spades, and every face card pairs two daruma dolls instead of a royal portrait. Rank markers run bilingual, Western digits alongside kanji, so the whole deck stays legible while reading as unmistakably hanafuda. Full 54-card set: illustration, suit/color system, and print-ready layout.",
+      sections: [
+        {
+          title: 'Overview', layout: 'statement',
+          body: ["A hanafuda-inspired reimagining of the standard 52-card deck."],
+        },
+        {
+          title: 'Suits', layout: 'media-first', cols: 3,
+          images: [{ ph: 'Cherry blossom suit', ratio: '5/7' }, { ph: 'Plum blossom suit', ratio: '5/7' }, { ph: 'Fern suit', ratio: '5/7' }],
+          body: ["Each suit is re-skinned around a Japanese floral motif (cherry blossom, plum blossom, fern) in place of the usual clubs and spades."],
+        },
+        {
+          title: 'Face Cards', layout: 'split',
+          body: ["Every face card pairs two daruma dolls instead of a royal portrait."],
+          images: [{ ph: 'Daruma face card', ratio: '5/7' }],
+        },
+        {
+          title: 'Bilingual Ranks',
+          body: ["Rank markers run bilingual, Western digits alongside kanji, so the whole deck stays legible while reading as unmistakably hanafuda."],
+          images: [{ ph: 'Rank marker detail', ratio: '16/9' }],
+        },
+        {
+          title: 'The Set',
+          items: [
+            ['Cards', "Full 54-card set."],
+            ['Illustration', "Suits, face cards, and daruma."],
+            ['System', "Suit and color system."],
+            ['Print', "Print-ready layout."],
+          ],
+          images: [{ ph: 'Full deck spread', ratio: '16/9' }],
+        },
+        {
+          title: 'In Progress',
+          body: ["The remaining suits and the box design are in progress."],
+          images: [{ ph: 'Box design (coming soon)', ratio: '16/9' }],
+        },
+      ],
       tag: 'WIP — remaining suits + box design in progress',
     },
   ];
@@ -696,6 +873,7 @@
   document.getElementById('work-count').textContent = `(${String(PROJECTS.length).padStart(2, '0')})`;
   document.getElementById('work-range').textContent = `001 — ${pad3(PROJECTS.length)}`;
   wall.style.setProperty('--cols', Math.min(PROJECTS.length, 3));
+  const cards = [];
   PROJECTS.forEach((p, i) => {
     const card = document.createElement('article');
     card.className = 'card';
@@ -715,8 +893,9 @@
         <span class="micro">${p.cat.split('—')[0].trim()}</span>
       </div>`;
     wall.appendChild(card);
+    cards[i] = card;
     new HalftonePoster(card, p);
-    const open = e => openCase(i, e);
+    const open = () => openCase(i);
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     card.addEventListener('pointerenter', () => { tagEl.textContent = `Open ${pad3(i + 1)} ↗`; tagEl.classList.add('on'); });
@@ -731,33 +910,102 @@
   const $ = id => document.getElementById(id);
   let lastFocus = null;
 
-  function openCase(i, e) {
+  const make = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  // an image entry: 'file.png', { src, caption }, or a placeholder { ph, ratio }
+  function figure(im, title) {
+    const o = typeof im === 'string' ? { src: im } : im;
+    const fig = make('figure', 'case-fig');
+    if (o.ph) {
+      const box = make('div', 'case-ph micro');
+      box.append(make('span', null, 'Image'), make('span', null, o.ph));
+      box.style.aspectRatio = o.ratio || '4/3';
+      fig.appendChild(box);
+    } else {
+      const img = make('img');
+      img.src = o.src; img.alt = o.caption || `${title} screen`; img.loading = 'lazy';
+      fig.appendChild(img);
+    }
+    if (o.caption) fig.appendChild(make('figcaption', null, o.caption));
+    return fig;
+  }
+  // a body entry: a paragraph string, or a placeholder { ph }
+  const para = t => typeof t === 'string' ? make('p', null, t) : make('p', 'case-ph-text', t.ph);
+
+  let current = 0;
+  // centre the circle on project i's poster, without animating the move
+  function setOrigin(i) {
+    const r = cards[i].querySelector('.card-poster').getBoundingClientRect();
+    caseEl.style.transition = 'none';
+    caseEl.style.setProperty('--cx', `${r.left + r.width / 2}px`);
+    caseEl.style.setProperty('--cy', `${r.top + r.height / 2}px`);
+    caseEl.getBoundingClientRect();   // commit the new centre before the transition comes back
+    caseEl.style.transition = '';
+  }
+
+  function openCase(i) {
+    current = i;
     const p = PROJECTS[i];
-    lastFocus = document.activeElement;
-    const cx = e && e.clientX ? e.clientX : innerWidth / 2;
-    const cy = e && e.clientY ? e.clientY : innerHeight / 2;
-    caseEl.style.setProperty('--cx', cx + 'px');
-    caseEl.style.setProperty('--cy', cy + 'px');
+    // "next project" swaps content in place — keep focus returning to the original card
+    if (!caseEl.classList.contains('open')) lastFocus = document.activeElement;
+    // the circle grows out of the clicked poster (not slides in from the last one)
+    if (!caseEl.classList.contains('open')) setOrigin(i);
     $('case-num').textContent = pad3(i + 1);
     $('case-cat').textContent = p.cat;
     $('case-title').textContent = p.title;
     $('case-cover').src = p.img;
     $('case-cover').alt = p.title;
+    caseEl.querySelector('.case-media').style.backgroundImage = p.bg ? `url("${p.bg}")` : '';
     const tag = p.tag || '';
     $('case-tag').textContent = tag;
     $('case-tag').style.display = tag ? '' : 'none';
     const desc = $('case-desc');
-    desc.innerHTML = '';
-    [].concat(p.desc).forEach(t => {
-      const el = document.createElement('p'); el.textContent = t; desc.appendChild(el);
+    desc.replaceChildren();
+    [].concat(p.desc || []).forEach(t => desc.appendChild(para(t)));
+    const secs = p.sections || [];
+    // section layouts: default (text, then images), 'statement' (large lead text),
+    // 'split' (text beside the images), 'media-first' (images above the text)
+    secs.forEach((s, k) => {
+      const sec = make('section', `case-sec${s.layout ? ` case-sec--${s.layout}` : ''}`);
+      const bar = make('div', 'case-sec-bar micro');
+      bar.append(make('span', 'num', String(k + 1).padStart(2, '0')), make('span', 'num muted', `/ ${String(secs.length).padStart(2, '0')}`));
+      const text = make('div', 'case-text');
+      text.appendChild(make('h3', null, s.title));
+      [].concat(s.body || []).forEach(t => text.appendChild(para(t)));
+      if (s.items) {
+        const dl = make('dl', 'case-items');
+        s.items.forEach(([k2, v]) => {
+          const row = make('div');
+          row.append(make('dt', 'micro', k2), make('dd', null, v));
+          dl.appendChild(row);
+        });
+        text.appendChild(dl);
+      }
+      let figs = null;
+      if (s.images && s.images.length) {
+        figs = make('div', 'case-figs');
+        figs.style.setProperty('--n', s.cols || 1);
+        s.images.forEach(im => figs.appendChild(figure(im, p.title)));
+      }
+      sec.appendChild(bar);
+      if (s.layout === 'split' && figs) {
+        const row = make('div', 'case-split');
+        row.append(text, figs);
+        sec.appendChild(row);
+      } else if (s.layout === 'media-first' && figs) sec.append(figs, text);
+      else { sec.appendChild(text); if (figs) sec.appendChild(figs); }
+      desc.appendChild(sec);
     });
     const gal = $('case-gallery');
-    gal.innerHTML = '';
-    (p.images || []).forEach(src => {
-      const img = document.createElement('img');
-      img.src = src; img.alt = `${p.title} screen`; img.loading = 'lazy';
-      gal.appendChild(img);
-    });
+    gal.replaceChildren(...(p.images || []).map(im => figure(im, p.title)));
+    const n = (i + 1) % PROJECTS.length;
+    $('case-next-num').textContent = pad3(n + 1);
+    $('case-next-title').textContent = PROJECTS[n].title;
+    $('case-next').onclick = () => openCase(n);
     caseEl.scrollTop = 0;
     caseEl.setAttribute('aria-hidden', 'false');
     caseEl.classList.remove('closing');
@@ -768,6 +1016,7 @@
   }
   function closeCase() {
     if (!caseEl.classList.contains('open')) return;
+    setOrigin(current);   // shrink back into the poster of the project being viewed
     caseEl.classList.add('closing');
     caseEl.classList.remove('open');
     caseEl.setAttribute('aria-hidden', 'true');
@@ -825,6 +1074,8 @@
       area.addEventListener('pointermove', e => {
         const r = this.cv.getBoundingClientRect(), m = this.mouse;
         m.x = e.clientX - r.left; m.y = e.clientY - r.top;
+        // no trail over text that asks for it (the hero copy has its own hover effect)
+        m.off = !!(opts.suppress && opts.suppress(e.clientX, e.clientY));
         if (m.px < -1e3) { m.px = m.x; m.py = m.y; }
         m.moved = true;
       });
@@ -955,14 +1206,16 @@
         ctx.translate(0, -this.sub);
       }
       // trail the pointer between frames so fast moves leave a line, not dots
-      if (m.px > -1e3 && m.moved && !this.opts.noTrail) {
+      if (m.px > -1e3 && m.moved && !this.opts.noTrail && !m.off) {
         const steps = Math.max(1, Math.ceil(Math.hypot(m.x - m.px, m.y - m.py) / PC));
         // opts.trailAfterLiquid: in the hero the liquid stage belongs to the metaballs' own cut
         const str = 0.35 * (this.opts.trailAfterLiquid ? k : 1);
         if (str > 0.01) for (let s = 1; s <= steps; s++)
           this.stamp(lerp(m.px, m.x, s / steps), lerp(m.py, m.y, s / steps) + this.sub, str);
       }
-      m.px = m.x; m.py = m.y; m.moved = false;
+      if (m.off) m.px = m.py = -1e4;   // restart the trail cleanly after leaving text
+      else { m.px = m.x; m.py = m.y; }
+      m.moved = false;
 
       // slabs: soft pills at the top, squaring off with the pixels
       ctx.fillStyle = `rgba(${fg},0.9)`;
@@ -983,7 +1236,9 @@
       const grid = this.opts.grid ? this.opts.grid() : true;
       if (peak < 0.05 && !grid && !this.slabs.length) return;   // nothing lit — leave it cleared
 
-      if (k < 1) this.drawLiquid(energy, 1 - k, rgb);
+      // the cursor trail skips the liquid look: at low dissolve it melted recent trail cells
+      // into one solid blob (the hero's glass already covers that stage)
+      if (k < 1 && !this.opts.trailAfterLiquid) this.drawLiquid(energy, 1 - k, rgb);
       if (k <= 0) return;
 
       // dots → pixels (with pixel kanji in the mid-energy cells)
@@ -1014,7 +1269,9 @@
 
   // the cursor trail: page-wide, following the hero's stages (none during the liquid
   // intro, dots mid-dissolve, pixels + ×/o glyphs from full dissolve onward)
+  let overHeroText = () => false;   // set by heroType below
   const heroPix = new PixelField(document.getElementById('hero-pix'), document.documentElement, {
+    suppress: (x, y) => overHeroText(x, y),
     slabs: 0, blinks: false, color: SWIRL, trail: 2, trailAfterLiquid: true,
     grid: () => heroProgress > 0 && heroProgress < 1,   // faint dot grid only while the hero dissolves
     // how far the page content has actually moved: scrolling through the pinned
@@ -1038,7 +1295,7 @@
     cv.id = 'hero-type'; cv.setAttribute('aria-hidden', 'true');
     pin.appendChild(cv);
     const ctx = cv.getContext('2d');
-    const SEL = '.hero-date > div, .hero-vert-l, .hero-vert-r, .hero-foot .intro, #hero h1, .hero-read .pct, .hero-read > div:nth-child(2)';
+    const SEL = '.hero-date > div, .hero-vert-l, .hero-foot .intro, #hero h1, .hero-read .pct, .hero-read > div:nth-child(2)';
     const els = [...hero.querySelectorAll(SEL)].map(el => ({ el, text: null, dots: [], cell: 3, color: '#000', box: null }));
     const range = document.createRange();
     let pinRect = pin.getBoundingClientRect(), dpr = 1, W = 0, H = 0;
@@ -1051,7 +1308,8 @@
       if (!box.width || !box.height) return;   // hidden at this breakpoint
       const st = getComputedStyle(el);
       const fs = parseFloat(st.fontSize);
-      item.cell = clamp(Math.round(fs / 14), 3, 10);
+      // 1px pixels on labels and the intro (anything coarser breaks small text), chunky on the name
+      item.cell = fs < 20 ? 1 : clamp(Math.round(fs / 18), 2, 12);
       item.color = st.color;
       const pad = 6;
       const w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
@@ -1086,9 +1344,12 @@
       }
       const d = o.getImageData(0, 0, w, h).data;
       const c = item.cell, ox = box.left - pinRect.left - pad, oy = box.top - pinRect.top - pad;
-      for (let y = c / 2; y < h; y += c) for (let x = c / 2; x < w; x += c) {
-        const a = d[((y | 0) * w + (x | 0)) * 4 + 3] / 255;
-        if (a > 0.08) item.dots.push(ox + x, oy + y, a);
+      // pixelate: a cell is "ink" when the glyphs cover enough of it (average, not one sample),
+      // so strokes come out as solid pixels instead of faint speckle
+      for (let cy = 0; cy + c <= h; cy += c) for (let cx = 0; cx + c <= w; cx += c) {
+        let sum = 0;
+        for (let y = cy; y < cy + c; y++) for (let x = cx; x < cx + c; x++) sum += d[(y * w + x) * 4 + 3];
+        if (sum / (c * c * 255) > 0.3) item.dots.push(ox + cx + c / 2, oy + cy + c / 2, 1);
       }
       item.box = { x: ox, y: oy, w, h };
     }
@@ -1101,8 +1362,13 @@
       kick();
     }
 
+    // the blue cursor trail stays off while the pointer is on the hero text
+    overHeroText = (x, y) => els.some(({ el }) => {
+      const r = el.getBoundingClientRect();
+      return r.width && x > r.left - 6 && x < r.right + 6 && y > r.top - 6 && y < r.bottom + 6;
+    });
     const lens = { x: -1e4, y: -1e4, r: 0, target: 0 };
-    const radius = () => clamp(Math.min(W, H) * 0.16, 80, 170);
+    const radius = () => clamp(Math.min(W, H) * 0.09, 50, 95);
     let running = false, dirty = false;
     hero.addEventListener('pointermove', e => {
       pinRect = pin.getBoundingClientRect();
@@ -1130,7 +1396,7 @@
           if (d2 >= Rin2) continue;
           const L0 = 1 - Math.sqrt(d2) / Rin;
           const L = L0 * L0 * (3 - 2 * L0);
-          const r = c * 0.6 * dots[k + 2] * (1 + 0.6 * L);   // dots swell toward the pointer
+          const r = c * (0.62 + 0.2 * L);   // overlapping pixels read as blobby strokes; they melt together near the pointer
           ctx.moveTo(dots[k] + r, dots[k + 1]);
           ctx.arc(dots[k], dots[k + 1], r, 0, Math.PI * 2);
         }

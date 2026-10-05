@@ -47,18 +47,17 @@
       <div class="hero-ui">
         <div class="hero-date micro num">
           <div id="today">2026/09</div>
-          <div>Portfolio — Vol. 01</div>
+          <div> Vol. 01 </div>
         </div>
         <div class="hero-vert-l micro">Design a thing<br>Build a thing<br>Think of a thing</div>
-        <div class="hero-vert-r micro vert">Interactive / UX·UI / Graphic / Branding / Engineering</div>
         <div class="hero-foot">
           <div>
             <p class="intro">Designer &amp; Engineer, making interactive, graphic, and technical work that likes to move.</p>
-            <h1 class="display">Robert<br>Capron</h1>
+            <h1 class="display">Robe<span class="k-rt">r</span>t<br>Cap<span class="k-ro">r</span>on</h1>
           </div>
           <div class="hero-read micro">
             <div class="pct num" id="pct">(000)</div>
-            <div>Scroll to dissolve</div>
+            <div>↓ Scroll to dissolve</div>
             <div class="track"><div class="fill" id="pct-fill"></div></div>
           </div>
         </div>
@@ -77,20 +76,14 @@
 
   <!-- ═════════════ ABOUT ═════════════ -->
   <section id="about" class="sec">
-    <header>
-      <div class="sec-bar micro"><span class="num">02</span><span>About</span><span class="muted">Design · Build</span></div>
-      <h2 class="sec-title display">About</h2>
-    </header>
-    <div class="about-grid">
-      <p class="lead">Robert Capron designs and builds things for screens — interfaces, identities, and interactive pieces that reward poking at them.</p>
-      <ul class="micro">
-        <li><span>Interactive</span><span>01</span></li>
-        <li><span>UX / UI</span><span>02</span></li>
-        <li><span>Graphic</span><span>03</span></li>
-        <li><span>Branding</span><span>04</span></li>
-        <li><span>Engineering</span><span>05</span></li>
-      </ul>
+    <div class="sec-bar micro"><span class="num">02</span><span>About</span><span class="muted">Design · Build</span></div>
+    <!-- two image slots — swap each placeholder div for <img src="…" alt="…"> -->
+    <div class="about-media">
+      <div class="about-ph micro">Image</div>
+      <div class="about-ph micro">Image</div>
     </div>
+    <h2 class="sec-title display">About</h2>
+    <p class="about-lead">Robert Capron designs and builds things for screens — interfaces, identities, and interactive pieces that reward poking at them.</p>
   </section>
 
   <!-- ═════════════ CONTACT ═════════════ -->
@@ -123,6 +116,10 @@
         <span class="micro" id="case-tag"></span>
         <div id="case-desc"></div>
         <div id="case-gallery"></div>
+        <button id="case-next" type="button">
+          <span class="micro"><span>Next project</span><span class="num" id="case-next-num"></span></span>
+          <span class="display"><span id="case-next-title"></span> →</span>
+        </button>
       </div>
     </div>
   </div>
