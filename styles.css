@@ -121,7 +121,7 @@ p { text-wrap: pretty; }
 #home { position: absolute; top: 90vh; left: 0; width: 1px; height: 1px; }
 .hero-pin { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
 #blob { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-/* preview: ?hero=etch shows Dimensional Etch here instead of the blob (script.js: startEtchHero) */
+/* the hero: Dimensional Etch (script.js: startEtchHero); ?hero=blob shows the glass blob instead */
 .hero-etch { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; border: 0; display: block; pointer-events: none; background: transparent; transform-origin: 50% 50%; }   /* behind the hero text and the sections, so it bleeds into the work wall */
 /* the pixel cursor trail follows you down the whole site: over the hero's blob, but behind the
    sections' content (they sit at z 2) so it never paints over text, posters or photos */
@@ -145,6 +145,16 @@ body.case-open #hero-pix { display: none; }
 /* poster furniture: sits on a line just under the nav, and on the side edges */
 .hero-date { position: absolute; top: calc(var(--gutter) + 44px); right: var(--gutter); text-align: right; }
 .hero-date div + div { color: var(--muted); }
+/* tiny hero switch (Etch ⇄ blob) under the date */
+.hero-switch {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: var(--s); padding: 3px 0;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--muted);
+  background: none; border: 0; cursor: pointer; pointer-events: auto;
+}
+.hero-switch .dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; transition: background 0.2s; }
+.hero-switch:hover, .hero-switch:focus-visible { color: var(--fg); }
+.hero-switch:hover .dot, .hero-switch:focus-visible .dot { background: currentColor; }
+.hero-switch:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 /* top-left label mirrors the date block top-right — a poster header, clear of the intro at any height */
 .hero-vert-l { position: absolute; left: var(--gutter); top: calc(var(--gutter) + 56px); color: var(--muted); }
 .hero-foot {

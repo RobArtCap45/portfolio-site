@@ -765,12 +765,12 @@
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     })(t0);
   }
-  // PREVIEW: index.html?hero=etch swaps the blob for Dimensional Etch running on its own
-  // (etch/etch.html?embed=1: simulated people drawing on the wireframe). It follows the same
+  // HERO: Dimensional Etch running on its own (etch/etch.html?embed=1: simulated people drawing
+  // on the wireframe). index.html?hero=blob brings back the glass blob instead. It follows the same
   // intro (starts big and centred, settles to the right); scrolling through the dissolve then
   // flies the Etch camera into the shape (sent as a message, so it stays sharp). It sits on a
   // fixed layer behind the page, so it bleeds into Projects and Work and fades as that title rises.
-  const HERO_ETCH = new URLSearchParams(location.search).get('hero') === 'etch';
+  const HERO_ETCH = new URLSearchParams(location.search).get('hero') !== 'blob';
   function startEtchHero() {
     blobCv.style.display = 'none';
     const fr = document.createElement('iframe');
@@ -807,6 +807,15 @@
   }
   if (HERO_ETCH) startEtchHero();
   else try { startHeroShader(); } catch (err) { console.error(err); blobCv.classList.add('fallback'); }
+  // the little switch under the date: reload with the other hero (the intro plays again from the top)
+  const heroSwitch = document.getElementById('hero-switch');
+  heroSwitch.innerHTML = `<span class="dot" aria-hidden="true"></span>${HERO_ETCH ? 'Show blob' : 'Show etch'}`;
+  heroSwitch.setAttribute('aria-label', HERO_ETCH ? 'Switch the hero to the glass blob' : 'Switch the hero to Dimensional Etch');
+  heroSwitch.addEventListener('click', () => {
+    const u = new URL(location.href);
+    if (HERO_ETCH) u.searchParams.set('hero', 'blob'); else u.searchParams.delete('hero');
+    location.replace(u.href);
+  });
 
   // ══════════════════════════════════════════════════════════════
   // WORK — halftone posters with a full-colour pixel lens
