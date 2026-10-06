@@ -105,17 +105,23 @@
         {
           title: 'The Brief',
           body: ["Design a self-serve ordering kiosk for a brand."],
-          images: [{ ph: 'Pizza Wizard kiosk / brand hero', ratio: '16/9' }],
+          images: [{ src: 'pizza-wizard/brief-splash.jpg', caption: 'The kiosk’s splash screen: “Mmmm Pizza!”' }],
         },
         {
-          title: 'Brainstorm',
+          title: 'Brainstorm', layout: 'split',
           body: ["I started with research at a real, installed kiosk, walking the entire order-to-checkout flow and scoring it against Nielsen's 10 usability heuristics to see what held up and what didn't. That audit set the baseline before a single screen was drawn: what actually makes a touchscreen ordering flow fast, versus what just looks fast."],
-          images: [{ ph: 'Heuristic audit of the existing kiosk' }],
+          images: [{ src: 'pizza-wizard/brainstorm-score-scale.png', caption: 'Each of Nielsen’s 10 heuristics scored 0 to 4.' }],
         },
         {
           title: 'Timeline',
-          body: [{ ph: 'Timeline text: phases and how long each took.' }],
-          images: [{ ph: 'Project timeline', ratio: '16/5' }],
+          body: ["A four-month project, with a new step each week, from competitive research through to animated compositions."],
+          items: [
+            ['01', 'Research'],
+            ['02', 'Wireframes and work flows'],
+            ['03', 'Style guide'],
+            ['04', 'Grid layout'],
+            ['05', 'Compositions'],
+          ],
         },
         {
           title: 'Scope',
@@ -125,12 +131,19 @@
             ['Content', "I used Pizza Wizard's current menu and items, and added restrictions and limits on orders."],
             ['Functionality', "I researched the user flow, including accessibility, item removal, and error prevention."],
           ],
-          images: [{ ph: 'Kiosk placement / customer flow in the restaurant' }],
+          cols: 2,
+          images: [
+            { src: 'pizza-wizard/scope-console-guide.jpg', caption: 'Console guide: a 22" screen on the counter, next to the cashier and pizza display.' },
+            { src: 'pizza-wizard/scope-3d-render.jpg', caption: '3D render of the kiosks in the restaurant.' },
+          ],
         },
         {
           title: 'Workflow',
           body: ["I mapped out the user's journey through the kiosk."],
-          images: [{ ph: 'User journey map', ratio: '16/9' }],
+          images: [
+            { src: 'pizza-wizard/workflow-main.png', caption: 'Main flow.' },
+            { src: 'pizza-wizard/workflow-checkout.png', caption: 'Checkout flow.' },
+          ],
         },
         {
           title: 'Mockups',
@@ -139,7 +152,10 @@
             ['Virtual', "I made a virtual mockup to see how the kiosk might look in the restaurant."],
           ],
           cols: 2,
-          images: [{ ph: 'Physical mockup, to scale', ratio: '3/4' }, { ph: 'Virtual mockup in the restaurant', ratio: '3/4' }],
+          images: [
+            { src: 'pizza-wizard/mockup-physical.jpg', caption: 'Physical mockup: type, buttons and keypad printed to scale.' },
+            { src: 'pizza-wizard/mockup-3d-render.jpg', caption: 'Virtual mockup in the restaurant.' },
+          ],
         },
         {
           title: 'Wireframes',
@@ -749,7 +765,48 @@
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     })(t0);
   }
-  try { startHeroShader(); } catch (err) { console.error(err); blobCv.classList.add('fallback'); }
+  // PREVIEW: index.html?hero=etch swaps the blob for Dimensional Etch running on its own
+  // (etch/etch.html?embed=1: simulated people drawing on the wireframe). It follows the same
+  // intro (starts big and centred, settles to the right); scrolling through the dissolve then
+  // flies the Etch camera into the shape (sent as a message, so it stays sharp). It sits on a
+  // fixed layer behind the page, so it bleeds into Projects and Work and fades as that title rises.
+  const HERO_ETCH = new URLSearchParams(location.search).get('hero') === 'etch';
+  function startEtchHero() {
+    blobCv.style.display = 'none';
+    const fr = document.createElement('iframe');
+    fr.className = 'hero-etch';
+    fr.src = 'etch/etch.html?embed=1&people=8';
+    fr.title = 'Dimensional Etch, drawing on its own';
+    fr.setAttribute('aria-hidden', 'true');
+    fr.tabIndex = -1;
+    document.body.prepend(fr);   // first in the page: fixed behind the hero text and the sections
+    const wide = matchMedia('(min-width: 1001px)');
+    let sentZoom = -1, sentPause = null;
+    const workTitle = document.querySelector('#work .sec-title');
+    fr.addEventListener('load', () => { sentZoom = -1; sentPause = null; });   // resend both once it's listening
+    (function follow() {
+      const settle = smooth(0, 1, introP), dive = smooth(0, 1, heroProgress);
+      const scale = lerp(wide.matches ? 1.6 : 1.3, wide.matches ? 1.18 : 1.05, settle);
+      // % of the hero: over to the right of the name, then back to the middle as we fly in
+      const shift = wide.matches ? 17 * settle * (1 - smooth(0, 0.45, heroProgress)) : 0;
+      fr.style.transform = `translateX(${shift}%) scale(${scale})`;
+      const zoom = +lerp(1, 4, dive * dive).toFixed(3);    // eases in, then rushes through the frames
+      if (zoom !== sentZoom && fr.contentWindow) { fr.contentWindow.postMessage({ etchZoom: zoom }, location.origin); sentZoom = zoom; }
+      // bleed into the work wall, fading out as its title climbs from the bottom of the screen to the top quarter
+      const titleTop = workTitle.getBoundingClientRect().top;
+      const fade = smooth(innerHeight * 0.25, innerHeight * 0.95, titleTop);
+      fr.style.opacity = fade.toFixed(3);
+      const hidden = fade < 0.01;
+      if (hidden !== sentPause && fr.contentWindow) {   // stop drawing while it can't be seen
+        fr.style.visibility = hidden ? 'hidden' : '';
+        fr.contentWindow.postMessage({ etchPause: hidden }, location.origin);
+        sentPause = hidden;
+      }
+      requestAnimationFrame(follow);
+    })();
+  }
+  if (HERO_ETCH) startEtchHero();
+  else try { startHeroShader(); } catch (err) { console.error(err); blobCv.classList.add('fallback'); }
 
   // ══════════════════════════════════════════════════════════════
   // WORK — halftone posters with a full-colour pixel lens

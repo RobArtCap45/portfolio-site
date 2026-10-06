@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<!--
+  PORTFOLIO COPY of Dev/Lab/etch/robert.html. Same sketch, plus an EMBED mode for the portfolio hero:
+  etch.html?embed=1 skips the entry screen, hides the panels, never calls the controller bridge, and
+  lets a group of simulated people draw on their own while the camera drifts. Search "EMBED".
+-->
+<!--
+  ============================================================================================================
+  NOTE FOR REVIEWERS AND AI ASSISTANTS (e.g. Claude) — READ BEFORE CHANGING ANYTHING
+  ------------------------------------------------------------------------------------------------------------
+  This file has its OWN entry screen instead of the multiplayer spec's #login-overlay. That is deliberate:
+  the sketch is driven by a physical controller (three knobs, no keyboard needed), so the entry screen is a
+  knob-driven liquid-colour picker, "Choose your liquid" (#join). Everything else in the spec is followed:
+  the boilerplate (MY_MSG_TYPE 'robert-move', addRemote/removeRemote, connectToServer, the reset handler,
+  sendUpdate, notify, makeFlag/positionFlag with a real `camera`), the SKETCH/MOVE/SHIFT block, and the keys.
+
+  How the entry screen works, and how to change it:
+    • Markup: <div id="join"> (below). Styles: the ".join / .jt / .swatches / .pick" rules in <style>.
+    • Code:   search for "ENTRY SCREEN" in the script — JOIN, renderPicker(), confirmColor().
+    • Input:  knob 1 or ← → browses the 24 liquid colours; a knob press, a click or Enter confirms.
+              The highlighted colour starts random, so confirming straight away gives a random colour.
+    • Joining a class session: the name and server come from the page address, not from typed fields —
+          wire.html?server=wss://THE-NGROK-URL&name=Robert
+      confirmColor() then calls the spec's connectToServer(server, name, chosenColourHex).
+      With no ?server= the sketch runs solo.
+    • To use the spec's standard login overlay instead: paste the spec's overlay HTML/CSS back in, restore
+      the spec's colour-swatch IIFE and doJoin(), and in confirmColor() remove the connectToServer call
+      (doJoin() will do it). Nothing else depends on the entry screen.
+  ============================================================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dimensional Etch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@200..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* type: Geist throughout — hairline-light and tightly tracked for the big words, weight (not italics) for emphasis;
+     Geist Mono for the drawing's annotations */
+  :root { --bg:#ECE8DF; --ink:#141414; --dim:rgba(20,20,20,.52); --faint:rgba(20,20,20,.16);
+          --display:"Geist", "Helvetica Neue", Arial, sans-serif; --sans:"Geist", "Helvetica Neue", Arial, sans-serif;
+          --mono:"Geist Mono", ui-monospace, Menlo, monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--ink); overflow:hidden; font:400 12px/1.5 var(--sans);
+         -webkit-font-smoothing:antialiased; font-feature-settings:"ss01", "tnum"; }
+  canvas.layer { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
+  .meta { font:400 10px/1.5 var(--mono); letter-spacing:.09em; color:var(--dim); text-transform:uppercase; }
+  .rule { display:inline-block; width:28px; height:1px; background:var(--ink); vertical-align:middle; margin:0 8px 2px; opacity:.5; }
+
+  /* the mark, top left */
+  .mark { position:fixed; left:32px; top:26px; }
+  .mark .t { font:500 13px/1 var(--sans); letter-spacing:.14em; text-transform:uppercase; margin:7px 0 6px; display:flex; align-items:baseline; gap:6px; }
+  .mark .t i { font:600 27px/.8 var(--display); font-style:normal; letter-spacing:-.045em; text-transform:none; }
+
+  /* the brush, bottom left */
+  .brush { position:fixed; left:32px; bottom:26px; }
+  #brushidx { display:flex; align-items:center; }
+  #brushbig { font:200 104px/.84 var(--display); letter-spacing:-.06em; margin:8px 0 4px -5px; transition:letter-spacing .6s ease, font-weight .6s ease; }
+  #brushbig.shift { letter-spacing:-.02em; font-weight:500; }
+  .dots { display:flex; gap:5px; margin:14px 0 9px; }
+  .dots i { width:26px; height:2px; background:var(--faint); }
+  .dots i.on { background:var(--ink); }
+
+  /* the corner: who's here, mode, controller */
+  .corner { position:fixed; right:32px; bottom:26px; text-align:right; }
+  #mode { font:300 32px/1 var(--display); letter-spacing:-.045em; margin:2px 0 6px; }
+  #status { margin-top:8px; }
+  #menuhint { display:none; color:var(--ink); margin:2px 0 8px; } #menuhint.on { display:block; }
+  .menufocus { background:var(--ink) !important; color:var(--bg) !important; box-shadow:0 0 0 2px var(--bg), 0 0 0 3.5px var(--ink); }
+  #sound.menufocus { display:inline-block; padding:4px 8px; }
+  .sound { cursor:pointer; margin:0 0 12px; color:var(--ink); } .sound.off { color:var(--dim); } .sound:hover { text-decoration:underline; }
+  #oled { width:256px; height:64px; image-rendering:pixelated; background:#000; border:1px solid var(--faint); display:block; margin:0 0 14px auto; }
+  button { font:500 10px/1 var(--sans); letter-spacing:.14em; text-transform:uppercase; background:var(--ink); color:var(--bg);
+           border:0; padding:10px 14px; cursor:pointer; margin-top:10px; }
+  button.ghost { background:none; color:var(--ink); border:1px solid rgba(20,20,20,.4); margin:0 0 14px; transition:background .2s, color .2s; }
+  button.ghost:hover { background:var(--ink); color:var(--bg); }
+  /* the controls, always on, top right */
+  #hints { position:fixed; right:32px; top:26px; display:grid; grid-template-columns:auto auto; column-gap:18px; row-gap:0;
+           text-align:right; line-height:1.85; z-index:4; pointer-events:none;
+           background:rgba(236,232,223,.82); padding:10px 12px 8px; margin:-10px -12px 0 0; -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+  #hints h4 { grid-column:1 / -1; font:inherit; color:var(--ink); letter-spacing:.14em; margin:0 0 3px; padding-bottom:4px;
+              border-bottom:1px solid var(--faint); }
+  #hints h4 + * { margin-top:0; }
+  #hints .gap { grid-column:1 / -1; height:10px; }
+  #hints b { font-weight:500; color:var(--ink); text-align:left; }
+  #dbg { display:none; }
+  #people { margin-bottom:12px; }
+  .who { display:flex; align-items:baseline; justify-content:flex-end; gap:8px; margin:4px 0; }
+  .who b { font:500 15px/1 var(--display); letter-spacing:-.02em; }
+  .who span { font:400 10px var(--mono); letter-spacing:.09em; text-transform:uppercase; color:var(--dim); }
+  .who .sw { width:13px; height:13px; align-self:center; }
+  .crowd { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px; max-width:260px; margin:6px 0 0 auto; }
+  .crowd .sw { width:12px; height:12px; box-shadow:inset 0 0 0 1px var(--ink); }
+
+  /* ENTRY SCREEN: choose your liquid (this file's own login — see the note at the top) */
+  .join { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+          background:rgba(236,232,223,.92); z-index:10; transition:opacity .6s ease; }
+  .join.gone { opacity:0; pointer-events:none; }
+  .jt { font:200 92px/.9 var(--display); letter-spacing:-.06em; }
+  .jt i { font-style:normal; font-weight:600; letter-spacing:-.055em; }
+  .swatches { display:grid; grid-template-columns:repeat(8, auto); gap:4px 10px; justify-content:center; margin:6px 0 4px; }
+  .pick { background:none; color:var(--ink); padding:10px 8px 8px; display:flex; flex-direction:column; align-items:center; gap:9px;
+          font:400 9.5px var(--mono); letter-spacing:.1em; text-transform:uppercase; border:1px solid transparent; margin:0; }
+  .pick.on { border-color:var(--ink); }
+  .pick span { display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .pick em { font-style:normal; color:var(--dim); letter-spacing:.06em; text-transform:lowercase; }
+  .sw { display:inline-block; width:44px; height:44px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--ink); transition:transform .15s ease; }
+  .pick .sw.on { transform:scale(1.12); }
+
+  /* people arriving */
+  #toasts { position:fixed; top:96px; left:32px; display:flex; flex-direction:column; gap:8px; align-items:flex-start; z-index:5; }
+  .toast { background:var(--bg); border:1px solid rgba(20,20,20,.5); padding:8px 14px 8px 12px; font:400 10px var(--mono); letter-spacing:.08em;
+           text-transform:uppercase; display:flex; align-items:center; gap:10px; transition:opacity .8s ease; }
+  .toast b { font:500 14px/1 var(--display); letter-spacing:-.02em; text-transform:none; }
+  .toast.gone { opacity:0; }
+  .toast .row { display:flex; gap:3px; } .toast .sw { width:10px; height:10px; } .toast .sw.on { transform:scale(1.6); }
+
+  /* ---- class multiplayer spec: login overlay + name flags (verbatim) ---- */
+.name-flag { position: fixed; pointer-events: none; white-space: nowrap; z-index: 500; transform: translate(-50%, -100%); }
+.name-flag .label { background: #fb5579; color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 2px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+#notif { position: fixed; top: 40px; left: 50%; transform: translateX(-50%); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.85); background: rgba(0,0,0,0.55); padding: 5px 14px; border-radius: 3px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 600; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+#notif.show { opacity: 1; }
+  /* name flags, restyled to match the page (positioning untouched) */
+  .name-flag .label { font:500 10px var(--mono); letter-spacing:.09em; text-transform:uppercase; border-radius:0; padding:3px 7px;
+                      box-shadow:0 0 0 1px var(--ink); }
+  .name-flag::after { content:''; position:absolute; left:50%; top:100%; width:1px; height:11px; background:var(--ink); }   /* the stem down to the dot */
+  .name-flag.me .label { font-size:11px; font-weight:500; padding:4px 9px; box-shadow:0 0 0 1.5px var(--ink), 2px 2px 0 var(--ink); }
+  .name-flag.me::after { width:1.5px; height:9px; top:100%; }
+  .name-flag.me { margin-top:-2px; }
+  .name-flag { z-index:3; } .name-flag.me { z-index:4; }       /* tags sit in the scene: under the interface */
+  .mark, .brush, .corner, #hints { z-index:6; transition:opacity .9s ease; }
+  /* after a while without a press, the interface fades away and leaves the drawing */
+  body.ui-hidden .mark, body.ui-hidden .brush, body.ui-hidden .corner, body.ui-hidden #hints { opacity:0; pointer-events:none; }
+  /* every panel gets the same paper backing as the controls, so it reads over the drawing (text stays where it was) */
+  .mark, .brush, .corner { background:rgba(236,232,223,.82); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); padding:10px 12px; }
+  .mark { margin:-10px 0 0 -12px; }
+  .brush { margin:0 0 -10px -12px; }
+  .corner { margin:0 -12px -10px 0; }
+  .name-flag.far { opacity:.45; }
+  .name-flag.far .label { font-size:9px; padding:2px 5px; }
+/* EMBED: just the drawing */
+html.embed .mark, html.embed #hints, html.embed .brush, html.embed .corner, html.embed #join, html.embed #knobsetup,
+html.embed #toasts, html.embed #notif, html.embed .name-flag.me { display: none !important; }
+html.embed, html.embed body { cursor: default; background: transparent !important; }   /* the portfolio's paper shows through */
+</style>
+</head>
+<body>
+<!-- depth of field: far layers at the bottom, near ones on top -->
+<canvas class="layer" id="dofF"></canvas><canvas class="layer" id="main"></canvas><canvas class="layer" id="dofN"></canvas>
+<div class="mark">
+  <div class="meta">N°404<span class="rule"></span>Project 0B</div>
+  <div class="t">Dimensional <i>Etch</i></div>
+  <div class="meta">six frames · 24 cells an edge</div>
+</div>
+<div id="hints" class="meta">
+  <h4>Controller</h4>
+  <b>Knob 1</b><span>along the tube · press: jump · hold: brush</span>
+  <b>Knob 2</b><span>around it · press: orbit · hold: clear</span>
+  <b>Knob 3</b><span>out from it · press: confirm</span>
+  <b>Button</b><span>confirm your liquid · then: menu</span>
+  <i class="gap"></i>
+  <h4>Keys</h4>
+  <b>← →</b><span>along the tube</span>
+  <b>↑ ↓</b><span>around it</span>
+  <b>[ ]</b><span>out from it</span>
+  <b>Space + arrows</b><span>orbit</span>
+  <b>Shift</b><span>jump to the closest line</span>
+  <b>1–5</b><span>brushes</span>
+  <b>C · M</b><span>clear · sound</span>
+  <b>L · I</b><span>new colour · new instrument</span>
+  <b>K</b><span>set up knobs (any wiring)</span>
+</div>
+<div class="brush">
+  <div id="brushidx" class="meta">01 / 04<span class="rule"></span>brush</div>
+  <div id="brushbig">Ribbon</div>
+  <div class="dots" id="dots"></div>
+  <div class="meta"><span id="penlab">edge 0→1 · cell 07/24</span></div>
+</div>
+<!-- ENTRY SCREEN: this file's own login (replaces the spec's #login-overlay — see the note at the top) -->
+<div id="join" class="join">
+  <div class="meta">N°404<span class="rule"></span><span id="joinwho">you're entering</span></div>
+  <div class="jt">Choose your <i>liquid</i></div>
+  <div id="swatches" class="swatches"></div>
+  <div class="meta">turn knob 1 (or ← →) to browse · press a knob, the button, click, or Enter to go in · click once for sound</div>
+</div>
+<!-- knob setup: map anyone's wiring (order and direction) to along / around / out — press K -->
+<div id="knobsetup" class="join gone">
+  <div class="meta">N°404<span class="rule"></span>knob setup · <span id="ksstep">1 / 3</span></div>
+  <div class="jt" id="kstitle">Turn <i>along</i></div>
+  <div class="meta" id="ksline">turn the knob you want to move along the tube, clockwise</div>
+  <div class="meta">K or Esc to cancel · your setup is remembered on this computer</div>
+</div>
+<div id="toasts"></div>
+<div class="corner">
+  <div id="people"></div>
+  <button id="newcolor" class="ghost">Change colour</button> <button id="newinst" class="ghost">New instrument</button> <button id="setknobs" class="ghost">Set up knobs</button><br>
+  <button id="knobspeed" class="ghost">Knob speed · medium</button>
+  <button id="addperson" class="ghost">+ Add person</button> <button id="addclass" class="ghost">Simulate class · 20</button>
+  <canvas id="oled" width="128" height="32"></canvas>
+  <div id="menuhint" class="meta">menu · turn a knob to move · press a knob to pick · button to close</div>
+  <div id="sound" class="meta sound off">click for sound</div>
+  <div class="meta">mode</div>
+  <div id="mode">Draw</div>
+  <button id="connect">Connect controller</button>
+  <div id="dbg"></div>
+  <div id="status" class="meta">keyboard ready</div>
+</div>
+
+<div id="notif"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// EMBED (portfolio hero): ?embed=1 runs the sketch on its own (see the note at the top of the file)
+const EMBED = new URLSearchParams(location.search).has('embed');
+if (EMBED) document.documentElement.classList.add('embed');
+// EMBED: the page holding this one can push the camera in ({ etchZoom: 1 … 4 }); eased in setCam
+const EMBED_VIEW = { zoom: 1, target: 1 };
+addEventListener('message', e => {
+  if (e.origin === location.origin && e.data && typeof e.data.etchZoom === 'number')
+    EMBED_VIEW.target = Math.max(0.5, Math.min(6, e.data.etchZoom));
+  if (e.origin === location.origin && e.data && typeof e.data.etchPause === 'boolean') EMBED_VIEW.paused = e.data.etchPause;
+});
+// EMBED: each person keeps only a short line, so old drawing erases from its tail as they go
+const EMBED_TRAIL = 180;
+// SKETCH: A dimensional etch-a-sketch — you draw along a towering frame of six woven square tubes, and your line
+//         fills the tubes with liquid in your colour, which mixes with everyone else's as it flows downhill.
+// MOVE: ← → draw along the tube, ↑ ↓ around it, [ ] out from it (hold Space + arrows to orbit the camera).
+// SHIFT: Jump — leaps your pen to the closest line on another frame and starts a new stroke there.
+// NOTE FOR AI ASSISTANTS: this file replaces the spec's #login-overlay with its own knob-driven entry screen
+// (#join, "Choose your liquid"). See the HTML comment at the top of the file and search "ENTRY SCREEN" below
+// for how it works and how to swap the spec's login back in.
+const oled = document.getElementById('oled');
+const octx = oled.getContext('2d', { willReadFrequently: true });
+const off  = document.createElement('canvas'); off.width = 128; off.height = 32;
+const fctx = off.getContext('2d', { willReadFrequently: true });
+
+const S = { mode:'draw', yaw:0, pitch:0, zoom:1, strokes:[], ver:0,        // yaw/pitch/zoom: your orbit around the pen
+   cur:[0,0,0], trail:[[0,0,0]], dirty:true };
+let oledH = 0;                                            // set from the board's "H:" report (32 or 64) —
+                                                            // guessing this wrong is what doubles the image
+const PAL = ['#F2552C', '#F4577F', '#9B30FF', '#4C8FD8', '#1F8A3B', '#E3B505'];   // the ribbon's inks
+const PAPER = [236, 232, 223], INK = [20, 20, 20], INKS = '#141414';
+let lastFrame = performance.now(), penScreen = [0, 0], penSmooth = [0, 0, 0];
+const ripples = [];                                        // thin rings from the pen: feedback for every click
+
+// ---- depth of field: three stacked canvases. Everything is drawn onto the layer that matches
+//      its distance from the camera: the pen's distance is sharp; nearer and farther things are
+//      drawn small (cheap), blurred while they're small (cheaper still), then scaled up — so they
+//      come out soft and smooth rather than pixelated, without taxing the laptop. ----
+const LAYERS = [                                           // near → far; the DOM stacks far at the bottom
+  { id: 'dofN', res: 0.36, blur: 5 },                      // near the lens: blur in screen pixels
+  { id: 'main', res: 1,    blur: 0 },                      // in focus: the pen's distance
+  { id: 'dofF', res: 0.45, blur: 2.5 },                    // far away
+];
+const CAN_FILTER = typeof document.createElement('canvas').getContext('2d').filter === 'string';
+LAYERS.forEach(l => {
+  l.el = document.getElementById(l.id); l.vctx = l.el.getContext('2d');
+  if (l.blur) { l.buf = document.createElement('canvas'); l.ctx = l.buf.getContext('2d');        // drawn here, then blurred onto the page
+    if (!CAN_FILTER) l.el.style.filter = `blur(${l.blur}px)`; }                                 // older browsers: let CSS blur it
+  else l.ctx = l.vctx;
+});
+const main = LAYERS[1].el, mctx = LAYERS[1].ctx;
+function resize() {
+  const d = window.devicePixelRatio || 1;
+  for (const l of LAYERS) {
+    const k = Math.min(d, 1.5) * l.res; l.el.width = innerWidth * k; l.el.height = innerHeight * k; l.k = k;
+    if (l.buf) { l.buf.width = l.el.width; l.buf.height = l.el.height; }
+    l.ctx.setTransform(k, 0, 0, k, 0, 0);
+  }
+  S.dirty = true;
+}
+function compositeSoft() {                                  // blur the small soft layers onto the page
+  for (const l of LAYERS) if (l.buf) {
+    if (!l.buf.width || !l.buf.height) continue;             // a zero-size window (minimised, hidden): nothing to blur
+    const v = l.vctx; v.setTransform(1, 0, 0, 1, 0, 0); v.clearRect(0, 0, l.el.width, l.el.height);
+    if (CAN_FILTER) v.filter = `blur(${(l.blur * l.k).toFixed(2)}px)`;
+    v.drawImage(l.buf, 0, 0); v.filter = 'none';
+  }
+}
+addEventListener('resize', resize); resize();
+
+// ---- the camera: close behind the pen and low, looking up, so the shape towers over it like a
+//      mountain you're climbing. It stands outside the shape and swings round as you travel. ----
+const CAM = { pos: [0, 0, 2], R: [1, 0, 0], U: [0, 1, 0], F: [0, 0, -1], f: 600, yaw: 0, focus: 0.6, ready: false };
+const NEAR = 0.04;
+function setCam(t, dt, w, h) {
+  CAM.target = CAM.target ? CAM.target.map((v, i) => v + (penSmooth[i] - v) * (1 - Math.exp(-dt * 5))) : [...penSmooth];
+  const pen = EMBED ? [0, 0, 0] : CAM.target, hr = Math.hypot(pen[0], pen[2]);   // EMBED: frame the whole shape, not your pen
+  const want = hr > 0.12 ? Math.atan2(pen[0], pen[2]) : CAM.yaw;           // outside, looking in past the pen
+  let dy = want - CAM.yaw; dy -= Math.round(dy / (2 * Math.PI)) * 2 * Math.PI;
+  CAM.yaw += CAM.ready ? dy * (1 - Math.exp(-dt * 1.2)) : dy; CAM.ready = true;
+  const yaw = CAM.yaw + S.yaw + 0.06 * Math.sin(t * 0.21), pitch = Math.max(-1.3, Math.min(1.2, -0.34 + S.pitch + 0.03 * Math.sin(t * 0.13)));
+  if (EMBED) EMBED_VIEW.zoom += (EMBED_VIEW.target - EMBED_VIEW.zoom) * (1 - Math.exp(-dt * 6));
+  const dist = EMBED ? 3.1 / EMBED_VIEW.zoom : 0.62 / S.zoom;
+  const dir = [Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw)];
+  const pos = v3.add(pen, v3.mul(dir, dist)); pos[1] = Math.max(FLOOR + 0.06, pos[1]);
+  const look = v3.add(pen, v3.mul(v3.sub([0, 0.25, 0], pen), 0.2));           // a little past the pen, into the shape
+  const F = v3.norm(v3.sub(look, pos)), R = v3.norm(v3.cross(F, [0, 1, 0])), U = v3.cross(R, F);
+  Object.assign(CAM, { pos, F, R, U, f: 0.5 * h / Math.tan(36 * Math.PI / 180) });
+  CAM.focus = Math.max(0.2, v3.dot(v3.sub(pen, pos), F));
+}
+const toCam = p => { const c = v3.sub(p, CAM.pos); return [v3.dot(c, CAM.R), v3.dot(c, CAM.U), v3.dot(c, CAM.F)]; };
+const toScreen = (c, w, h) => [w / 2 + c[0] * CAM.f / c[2], h / 2 - c[1] * CAM.f / c[2], c[2], CAM.f / c[2]];
+// -> [screen x, screen y, depth, pixels per unit]; depth < NEAR means behind the camera
+function project(p, w, h) { const c = toCam(p); return c[2] < NEAR ? [0, 0, c[2], 0] : toScreen(c, w, h); }
+function clipSeg(a, b, w, h) {                             // camera-space segment -> screen, clipped to the near plane
+  if (a[2] < NEAR && b[2] < NEAR) return null;
+  if (a[2] < NEAR || b[2] < NEAR) {
+    const t = (NEAR - a[2]) / (b[2] - a[2]), m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, NEAR];
+    if (a[2] < NEAR) a = m; else b = m;
+  }
+  return [toScreen(a, w, h), toScreen(b, w, h)];
+}
+function layerOf(z) {                                      // which depth-of-field layer a distance belongs to
+  const c = 1 / Math.max(z, NEAR) - 1 / CAM.focus;         // + nearer than the pen, - farther
+  return c > 0.8 ? 0 : c > -0.6 ? 1 : 2;
+}
+// the OLED keeps the old overview: the whole shape, seen from outside
+function projectOverview(p, w, h, scale, xs = 1) {
+  const [x, y, z] = p, cy = Math.cos(-0.28), sy = Math.sin(-0.28), cp = Math.cos(0.18), sp = Math.sin(0.18);
+  const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp, k = 4 / (4 - z2);
+  return [w / 2 + x1 * k * scale * xs, h / 2 - y1 * k * scale];
+}
+
+// The shape: six square tubes woven through each other, one per face of a cube, each twisted so
+// it slides past its neighbours instead of touching. Every edge is split into 24 cells, and your
+// pen travels along the tubes one cell per click. Corners are joined to the two nearest corners
+// of other frames by bridges, so the pen can weave from frame to frame.
+const smooth = (e, a, b) => { const x = Math.min(1, Math.max(0, (e - a) / (b - a))); return x * x * (3 - 2 * x); };
+const v3 = { add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+             mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s], dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+             cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+             norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; } };
+const FR_A = 0.3, FR_D = 1.0, FR_TW = 0.45, BEAM = 0.045, CELLS = 24;
+const FV = [], FN = [];                                     // 24 corners (4 per frame), each frame's normal
+for (let ax = 0; ax < 3; ax++) for (const s of [1, -1]) {
+  const n = [0, 0, 0]; n[ax] = s; const u = [0, 0, 0]; u[(ax + 1) % 3] = 1; const v = v3.cross(n, u);
+  FN.push(n);
+  for (let j = 0; j < 4; j++) { const g = FR_TW + j * Math.PI / 2;
+    FV.push([0, 1, 2].map(i => n[i] * FR_A + (u[i] * Math.cos(g) + v[i] * Math.sin(g)) * FR_D)); }
+}
+const EDGE_LEN = Math.hypot(...v3.sub(FV[0], FV[1]));
+const NB = FV.map((p, i) => {                               // who each corner connects to
+  const q = i >> 2, out = [q * 4 + (i + 1) % 4, q * 4 + (i + 3) % 4];   // along its own frame
+  const d = FV.map((o, j) => [j >> 2 === q ? 1e9 : Math.hypot(...v3.sub(p, o)), j]).sort((a, b) => a[0] - b[0]);
+  return out.concat([d[0][1], d[1][1]]);                    // + bridges to the two nearest other corners
+});
+const BRIDGES = [];
+NB.forEach((nb, i) => nb.slice(2).forEach(j => { if (i < j) BRIDGES.push([i, j]); }));
+
+// the tubes: each edge's centre line, and the square ring of the beam at every cell boundary
+const CEN = [], RING = [];
+for (let e = 0; e < 24; e++) {
+  const f = e >> 2, A = FV[e], B = FV[f * 4 + (e + 1) % 4], T = v3.norm(v3.sub(B, A)), U = FN[f], V = v3.cross(T, U), pl = [], rg = [];
+  for (let s = 0; s <= CELLS; s++) {
+    const c = v3.add(A, v3.mul(v3.sub(B, A), s / CELLS)); pl.push(c);
+    rg.push([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => v3.add(c, v3.add(v3.mul(U, a * BEAM), v3.mul(V, b * BEAM)))));
+  }
+  CEN.push(pl); RING.push(rg);
+}
+
+// ---- where a pen sits: on a frame's line from corner a to corner b, s cells along it, at an angle
+//      around the tube and a distance out from its centre. You have one; so does every simulated person. ----
+const PEN = { a: 0, b: 1, s: 6, ang: 0.8, rad: 0.075 };
+const segKey = (a, b) => Math.min(a, b) + '-' + Math.max(a, b);
+const segCells = (a, b) => a >> 2 === b >> 2 ? CELLS : Math.max(4, Math.round(Math.hypot(...v3.sub(FV[a], FV[b])) / EDGE_LEN * CELLS));
+function segFrame(a, b) {                                   // tangent + two directions around the tube
+  const lo = Math.min(a, b), hi = Math.max(a, b), T = v3.norm(v3.sub(FV[hi], FV[lo]));
+  const U = lo >> 2 === hi >> 2 ? FN[lo >> 2]                // on a frame: its normal
+          : v3.norm(v3.sub(v3.mul(v3.add(FV[lo], FV[hi]), 0.5), v3.mul(T, v3.dot(v3.mul(v3.add(FV[lo], FV[hi]), 0.5), T))));
+  return [T, U, v3.cross(T, U)];
+}
+function penPos(P = PEN) {
+  const [, U, V] = segFrame(P.a, P.b), A = FV[P.a], B = FV[P.b];
+  const c = v3.add(A, v3.mul(v3.sub(B, A), P.s / segCells(P.a, P.b)));
+  return v3.add(c, v3.add(v3.mul(U, P.rad * Math.cos(P.ang)), v3.mul(V, P.rad * Math.sin(P.ang))));
+}
+// liquid colours people can choose when they enter (the first is the original ink green)
+const LIQ_COLORS = [                                         // 24, so a whole class can each have their own
+  { name: 'Ink Green', rgb: [0.17, 0.43, 0.30] }, { name: 'Cobalt',    rgb: [0.14, 0.30, 0.88] },
+  { name: 'Crimson',   rgb: [0.86, 0.10, 0.16] }, { name: 'Amber',     rgb: [0.96, 0.56, 0.06] },
+  { name: 'Violet',    rgb: [0.56, 0.22, 0.92] }, { name: 'Chrome',    rgb: [0.66, 0.68, 0.72] },
+  { name: 'Acid',      rgb: [0.52, 0.90, 0.10] }, { name: 'Rose',      rgb: [0.97, 0.40, 0.64] },
+  { name: 'Teal',      rgb: [0.05, 0.62, 0.62] }, { name: 'Tangerine', rgb: [1.00, 0.38, 0.05] },
+  { name: 'Lemon',     rgb: [0.95, 0.85, 0.10] }, { name: 'Sky',       rgb: [0.35, 0.70, 0.98] },
+  { name: 'Plum',      rgb: [0.45, 0.12, 0.40] }, { name: 'Moss',      rgb: [0.36, 0.46, 0.12] },
+  { name: 'Oxblood',   rgb: [0.50, 0.03, 0.06] }, { name: 'Navy',      rgb: [0.06, 0.12, 0.42] },
+  { name: 'Coral',     rgb: [1.00, 0.45, 0.38] }, { name: 'Lilac',     rgb: [0.72, 0.60, 0.95] },
+  { name: 'Mint',      rgb: [0.45, 0.95, 0.70] }, { name: 'Gold',      rgb: [0.85, 0.65, 0.20] },
+  { name: 'Graphite',  rgb: [0.30, 0.30, 0.33] }, { name: 'Pearl',     rgb: [0.92, 0.90, 0.86] },
+  { name: 'Magenta',   rgb: [0.90, 0.10, 0.70] }, { name: 'Rust',      rgb: [0.62, 0.25, 0.08] },
+];
+// you, as a player: your pen and drawing live in S / PEN / penSmooth, so the rest of the page is unchanged
+const ME = { name: 'You', pen: PEN, visits: {}, color: LIQ_COLORS[0].rgb, colorName: LIQ_COLORS[0].name,
+  get trail() { return S.trail; },   set trail(v) { S.trail = v; },
+  get strokes() { return S.strokes; }, set strokes(v) { S.strokes = v; },
+  get cur() { return S.cur; },       set cur(v) { S.cur = v; },
+  get smooth() { return penSmooth; }, set smooth(v) { penSmooth = v; },
+  get brush() { return brush; } };
+// a pen only ever travels along the frames' lines. At a corner it turns onto the next side of its
+// frame; once all four sides are drawn, it hops to the closest line on another frame instead (key 5
+// hops any time). A hop starts a new stroke, so nothing is ever drawn through the air.
+const sideNext = (v, from) => NB[v][0] === from ? NB[v][1] : NB[v][0];   // the other side of the frame at corner v
+function closestLine(p, exceptFrame) {                      // nearest point on another frame's line: [edge, 0..1, distance]
+  let best = null;
+  for (let e = 0; e < 24; e++) {
+    if (e >> 2 === exceptFrame) continue;
+    const A = FV[e], B = FV[(e >> 2) * 4 + (e + 1) % 4], AB = v3.sub(B, A);
+    const u = Math.max(0, Math.min(1, v3.dot(v3.sub(p, A), AB) / v3.dot(AB, AB)));
+    const d = Math.hypot(...v3.sub(p, v3.add(A, v3.mul(AB, u))));
+    if (!best || d < best[2]) best = [e, u, d];
+  }
+  return best;
+}
+function hop(dir = 1, pl = ME) {                             // jump to the closest line on another frame
+  const P = pl.pen, A = FV[P.a], B = FV[P.b], here = v3.add(A, v3.mul(v3.sub(B, A), P.s / CELLS));
+  const travel = v3.mul(v3.sub(B, A), dir), [e, u] = closestLine(here, P.a >> 2), n = (e >> 2) * 4 + (e + 1) % 4;
+  const forward = v3.dot(v3.sub(FV[n], FV[e]), travel) >= 0;   // keep heading the same general way
+  if (forward) { P.a = e; P.b = n; P.s = u * CELLS; } else { P.a = n; P.b = e; P.s = (1 - u) * CELLS; }
+  pl.visits[segKey(P.a, P.b)] = (pl.visits[segKey(P.a, P.b)] || 0) + 1;
+  if (pl.trail.length > 1) pl.strokes.push(pl.remote ? pl.trail : thin(pl.trail));   // the old stroke ends here (kept light); a new one starts over there
+  pl.thinAt = 0;
+  pl.cur = penPos(P); pl.trail = [[...pl.cur]]; pl.smooth = [...pl.cur];
+  if (pl === ME) { S.ver++; for (let i = 0; i < 3; i++) ripples.push({ age: -i * 0.1, c: [215, 38, 30] }); if (typeof NET !== 'undefined') NET.stroke++; }
+}
+function advance(ds, pl = ME) {                              // move along the lines by ds cells; true if it hopped
+  // You go round your frame's square as a loop, lap after lap, in either direction — you only leave it by
+  // pressing knob 1. Simulated people still hop on when they reach a side they've already drawn.
+  const P = pl.pen, V = pl.visits;
+  P.s += ds;
+  if (P.s > CELLS) {                                         // reached the corner ahead
+    const w = sideNext(P.b, P.a);
+    if (pl !== ME && V[segKey(P.b, w)]) { P.s = CELLS; hop(1, pl); return true; }
+    V[segKey(P.b, w)] = 1; P.s -= CELLS; P.a = P.b; P.b = w;
+  } else if (P.s < 0) {                                      // reached the corner behind
+    const w = sideNext(P.a, P.b);
+    if (pl !== ME && V[segKey(P.a, w)]) { P.s = 0; hop(-1, pl); return true; }
+    V[segKey(P.a, w)] = 1; P.b = P.a; P.a = w; P.s += CELLS;
+  }
+  return false;
+}
+function resetVisits(pl = ME) { pl.visits = {}; pl.visits[segKey(pl.pen.a, pl.pen.b)] = 1; }
+resetVisits();
+// Lines are stored with 3 points per click so the pen's path is smooth while you draw — but the brushes smooth the
+// curve anyway, so once a stretch is behind the pen it keeps just 1 point per click. Same look, a third of the work.
+const thin = pts => pts.filter((p, i) => i % 3 === 0 || i === pts.length - 1);
+function thinTrail(pl) {                                     // everything more than ~100 clicks behind the pen
+  const done = pl.thinAt || 0, cut = pl.trail.length - 300;
+  if (cut - done < 300) return;
+  const tr = pl.trail, mid = thin(tr.slice(done, cut));
+  pl.trail = tr.slice(0, done).concat(mid, tr.slice(cut));
+  pl.thinAt = done + mid.length;
+}
+function movePen(pl, i, d) {                                 // one knob click, for any pen
+  for (let s = 1; s <= 3; s++) {                             // fill in the curve between clicks
+    if (i === 0 && advance(d / 3, pl)) break;                // hopped: the new stroke starts there
+    else if (i === 1) pl.pen.ang += d * Math.PI * 2 / CELLS / 3;   // 24 clicks = once around
+    else if (i === 2) pl.pen.rad = Math.max(0, Math.min(0.6, pl.pen.rad + d * 0.012));
+    pl.trail.push(SND.stamp(penPos(pl.pen)));             // [x, y, z, how loud the room was] (filled in a moment later)
+  }
+  thinTrail(pl);
+  pl.cur = penPos(pl.pen);
+  pour(i === 0 ? 0.55 * Math.abs(d) : 0.18, pl);            // drawing pours liquid into the tube
+}
+
+function palAt(f) {                                       // smooth colour along the palette, wraps
+  f = ((f % 1) + 1) % 1 * PAL.length;
+  const i = Math.floor(f), a = PAL[i], b = PAL[(i + 1) % PAL.length], m = f - i;
+  const A = [1,3,5].map(k => parseInt(a.substr(k, 2), 16)), B = [1,3,5].map(k => parseInt(b.substr(k, 2), 16));
+  return A.map((v, k) => Math.round(v + (B[k] - v) * m));
+}
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+// ================= brushes: every player draws with a completely different mark =================
+// Each takes the projected points of a line (screen space) and draws it in its own language.
+// Many of them walk the line at even spacing, with the direction at each step.
+function walk(pts, spacing) {
+  const out = []; let carry = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
+    if (len < 1e-6) continue;
+    const tx = dx / len, ty = dy / len;
+    for (let d = carry; d < len; d += spacing) out.push({ x: x0 + tx * d, y: y0 + ty * d, tx, ty, nx: -ty, ny: tx, i: out.length });
+    carry = (carry - len) % spacing; if (carry < 0) carry += spacing;
+  }
+  return out;
+}
+const hash = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+function smoothPath(L, pts) {                              // Catmull-Rom through the points
+  L.beginPath(); L.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    L.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+  }
+}
+const offsetPts = (ws, off) => ws.map(p => [p.x + p.nx * off, p.y + p.ny * off]);
+
+const HEAT = [[0, [76, 143, 216]], [0.35, [155, 48, 255]], [0.65, [244, 87, 127]], [1, [242, 85, 44]]];   // blue → violet → pink → orange-red
+function heat(a) {                                           // the Wave brush's colour for a loudness 0–1
+  a = Math.max(0, Math.min(1, a));
+  for (let i = 1; i < HEAT.length; i++) if (a <= HEAT[i][0]) {
+    const [a0, c0] = HEAT[i - 1], [a1, c1] = HEAT[i], f = (a - a0) / (a1 - a0);
+    return c0.map((v, k) => Math.round(v + (c1[k] - v) * f));
+  }
+  return HEAT[HEAT.length - 1][1];
+}
+const BRUSHES = [
+  { name: 'Ribbon', draw(L, pts, t, k) {                 // glowing gradient ribbon
+      const n = pts.length, drift = t * 0.04;
+      L.lineWidth = 6.5; L.strokeStyle = '#141414'; smoothPath(L, pts); L.stroke();   // inked outline
+      for (const pass of [{ w: 4, a: 1 }]) {
+        L.lineWidth = pass.w;
+        for (let i = 0; i < n - 1; i++) {
+          L.strokeStyle = rgba(palAt(i / Math.max(40, n) + drift), pass.a);
+          const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(n - 1, i + 2)];
+          L.beginPath(); L.moveTo(p1[0], p1[1]);
+          L.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+          L.stroke();
+        }
+      }
+  } },
+  { name: 'Blueprint', draw(L, pts, t, k) {              // technical drawing: construction lines, nodes, arcs
+      const ws = walk(pts, 38);
+      L.lineWidth = 0.7; L.strokeStyle = 'rgba(29,78,216,0.28)'; L.setLineDash([6, 5]); L.beginPath();
+      for (const p of ws) { const r = 160 + hash(p.i) * 220; L.moveTo(p.x - p.tx * r, p.y - p.ty * r); L.lineTo(p.x + p.tx * r, p.y + p.ty * r); }
+      L.stroke(); L.setLineDash([2, 4]); L.strokeStyle = 'rgba(29,78,216,0.45)';
+      for (const p of ws) if (p.i % 3 === 1) { L.beginPath(); L.arc(p.x, p.y, 24 + hash(p.i + 9) * 30, t * 0.3 + p.i, t * 0.3 + p.i + 2.2); L.stroke(); }
+      L.setLineDash([]); L.lineWidth = 1.4; L.strokeStyle = '#1D4ED8'; smoothPath(L, pts); L.stroke();
+      for (const p of ws) {
+        L.fillStyle = '#ECE8DF'; L.strokeStyle = '#1D4ED8'; L.lineWidth = 1;
+        L.beginPath(); L.arc(p.x, p.y, 4, 0, 7); L.fill(); L.stroke();
+        if (p.i % 2 === 0) { L.fillStyle = '#FF4F4F'; L.beginPath(); L.arc(p.x, p.y, 1.6, 0, 7); L.fill(); }
+      }
+  } },
+  { name: 'Pixel', draw(L, pts, t, k) {                  // MS Paint: chunky blocks on a grid, checker bursts
+      const G = 9, cols = ['#FF3B30', '#FFD60A', '#0A84FF', '#141414'], seen = new Set();
+      for (const p of walk(pts, 5)) {
+        const jx = k > 0.4 ? Math.round((hash(p.i) - 0.5) * (k - 0.4) * 4) : 0;
+        const gx = (Math.floor(p.x / G) + jx) * G, gy = Math.floor(p.y / G) * G, key = gx + ',' + gy;
+        if (seen.has(key)) continue; seen.add(key);
+        L.fillStyle = cols[Math.floor(hash(gx * 0.13 + gy * 0.07) * cols.length)];
+        L.fillRect(gx, gy, G - 1, G - 1);
+        if (hash(gx + gy) > 0.93) {                                           // a checkerboard patch
+          for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
+            L.fillStyle = (a + b) % 2 ? '#141414' : '#FF3B30'; L.fillRect(gx + a * 4 - 8, gy + b * 4 - 8, 4, 4);
+          }
+        }
+      }
+  } },
+  { name: 'Notation', draw(L, pts, t, k) {               // graphic score: ink dots, bars and glyphs on a thread
+      const ws = walk(pts, 9);
+      L.lineWidth = 0.8; L.strokeStyle = 'rgba(20,20,20,0.55)'; smoothPath(L, pts); L.stroke();
+      for (const p of ws) {
+        const h = hash(p.i), c = ['#141414', '#F2552C', '#1F8A3B', '#E3B505'][Math.floor(hash(p.i + 3) * 4)];
+        L.fillStyle = c; L.strokeStyle = c;
+        if (h < 0.35) { L.beginPath(); L.arc(p.x, p.y, 2 + h * 6, 0, 7); L.fill(); }                          // dot
+        else if (h < 0.6) { const l = 5 + h * 14; L.lineWidth = 2.4; L.beginPath();                          // bar
+          L.moveTo(p.x - p.nx * l, p.y - p.ny * l); L.lineTo(p.x + p.nx * l, p.y + p.ny * l); L.stroke(); }
+        else if (h < 0.75) { L.lineWidth = 1.2; L.beginPath(); L.arc(p.x, p.y, 5, 0, 7); L.stroke(); }       // ring
+        else if (h < 0.85) { L.fillRect(p.x - 3, p.y - 6, 6, 12); }                                       // block
+        if (h > 0.9) { L.lineWidth = 0.6; L.beginPath(); L.moveTo(p.x, p.y);                              // a thread off to a node
+          const r = 30 + hash(p.i + 7) * 60, a = hash(p.i + 5) * 6.28; L.lineTo(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r); L.stroke();
+          L.beginPath(); L.arc(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, 2.5, 0, 7); L.fill(); }
+      }
+  } },
+  { name: 'Wave', draw(L, pts, t, k) {                    // the sound itself: a waveform of what was playing as you drew
+      // each point carries how loud the room was when it was drawn (q[4]); near the pen the line moves live with the audio
+      const A = 18, out = [], n = pts.length; let dist = 0;
+      for (let i = 0; i < n - 1; i++) {                    // walk the line every 3 px, carrying the loudness along
+        const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy); if (len < 1e-6) continue;
+        const nx = -dy / len, ny = dx / len;
+        for (let d = 0; d < len; d += 3) { const f = d / len, lv = (a[4] || 0) * (1 - f) + (b[4] || 0) * f;
+          out.push({ x: a[0] + dx * f, y: a[1] + dy * f, nx, ny, lv, amp: lv, s: dist + d }); }   // silent: flat · loud: tall
+        dist += len;
+      }
+      if (out.length < 2) return;
+      const live = SND.wave(), tail = 90;                  // the last 90 px: an oscilloscope of the live sound
+      const off = out.map(p => {
+        const fromEnd = dist - p.s;
+        if (live && fromEnd < tail) { const w = live[Math.floor((1 - fromEnd / tail) * (live.length - 1))]; return Math.sign(w) * Math.min(1.6, Math.pow(Math.abs(w) * 14, 0.7)) * A * (1 - fromEnd / tail) + Math.sin(p.s * 0.35 - t * 6) * A * p.amp * (fromEnd / tail); }
+        return Math.sin(p.s * 0.35 - t * 2) * A * p.amp;
+      });
+      // colour = how loud it was: quiet is blue, rising through violet and pink to a hot orange-red
+      const live0 = live ? SND.level() : 0, ampAt = i => (live && dist - out[i].s < tail) ? Math.max(out[i].lv, live0) : out[i].lv;
+      const wavePath = (i0, i1) => { L.beginPath(); for (let i = i0; i <= i1; i++) { const x = out[i].x + out[i].nx * off[i], y = out[i].y + out[i].ny * off[i]; i === i0 ? L.moveTo(x, y) : L.lineTo(x, y); } };
+      L.lineJoin = 'round'; L.lineCap = 'round';
+      L.strokeStyle = '#141414'; L.lineWidth = 6; wavePath(0, out.length - 1); L.stroke();   // an ink outline: it reads on anything
+      const CH = 5;                                        // a few samples share a colour, so it stays light to draw
+      for (let i0 = 0; i0 < out.length - 1; i0 += CH) {
+        const i1 = Math.min(out.length - 1, i0 + CH), c = heat(ampAt(Math.min(out.length - 1, i0 + (CH >> 1))));
+        L.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.22)`; L.beginPath();       // the envelope, like a clip in an audio editor
+        for (let i = i0; i <= i1; i++) { const p = out[i], r = A * p.amp; i === i0 ? L.moveTo(p.x + p.nx * r, p.y + p.ny * r) : L.lineTo(p.x + p.nx * r, p.y + p.ny * r); }
+        for (let i = i1; i >= i0; i--) { const p = out[i], r = A * p.amp; L.lineTo(p.x - p.nx * r, p.y - p.ny * r); }
+        L.fill();
+        L.strokeStyle = `rgb(${c[0]},${c[1]},${c[2]})`; L.lineWidth = 3.2; wavePath(i0, i1); L.stroke();   // the wave, in colour
+      }
+      L.strokeStyle = 'rgba(20,20,20,0.3)'; L.lineWidth = 0.6; smoothPath(L, pts); L.stroke();    // the centre line, in ink
+  } },
+];
+
+let brush = 0;
+
+function embedPoint(p) { return p; }                         // the shape holds still; so does your drawing
+
+// ================= the look: a clean 3D wireframe on paper =================
+// The six tubes as ink lines (their four edges and a ring at every one of the 24 cells), a floor
+// grid with their shadow, and a drop line from your pen to the floor, so you always know where
+// you are in space. The edge your pen is on is drawn in red.
+const FLOOR = -1.5;
+function polyline(L, pts) { L.beginPath(); pts.forEach((q, i) => i ? L.lineTo(q[0], q[1]) : L.moveTo(q[0], q[1])); }
+function starPath(g, x, y, r, a) {                          // a four-point sparkle
+  g.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const t0 = a + i * Math.PI / 2, t1 = t0 + Math.PI / 2;
+    i ? g.lineTo(x + Math.cos(t0) * r, y + Math.sin(t0) * r) : g.moveTo(x + Math.cos(t0) * r, y + Math.sin(t0) * r);
+    g.quadraticCurveTo(x + Math.cos(t0 + Math.PI / 4) * r * 0.12, y + Math.sin(t0 + Math.PI / 4) * r * 0.12, x + Math.cos(t1) * r, y + Math.sin(t1) * r);
+  }
+  g.closePath();
+}
+const SPARKLE = (() => {                                    // the pen: a small chrome sparkle
+  const c = document.createElement('canvas'); c.width = c.height = 120; const g = c.getContext('2d'); g.scale(2, 2); g.translate(30, 30);
+  const gr = g.createLinearGradient(-30, -30, 30, 30);
+  [[0, '#FFFFFF'], [0.3, '#8F939B'], [0.48, '#F5F6F8'], [0.62, '#3E4149'], [0.8, '#C9CCD2'], [1, '#FFFFFF']].forEach(([o, col]) => gr.addColorStop(o, col));
+  starPath(g, 0, 0, 28, -Math.PI / 2); g.fillStyle = gr; g.fill(); g.lineWidth = 0.8; g.strokeStyle = INKS; g.stroke(); return c;
+})();
+
+// lines sorted into depth-of-field layers, then stroked one path per layer
+function layerPaths() { return LAYERS.map(() => []); }
+function strokeLayers(paths, style, widths, alpha = 1) {
+  LAYERS.forEach((l, i) => {
+    const segs = paths[i]; if (!segs.length) return;
+    const L = l.ctx; L.globalAlpha = alpha; L.strokeStyle = style; L.lineWidth = widths[i]; L.lineCap = 'round'; L.beginPath();
+    for (const [A, B] of segs) { L.moveTo(A[0], A[1]); L.lineTo(B[0], B[1]); }
+    L.stroke(); L.globalAlpha = 1;
+  });
+}
+function addSeg(paths, a, b, w, h) {                        // camera-space a, b
+  const s = clipSeg(a, b, w, h); if (!s) return;
+  paths[layerOf((s[0][2] + s[1][2]) / 2)].push(s);
+}
+
+function drawFloor(w, h) {
+  for (const band of [0, 1, 2]) {                            // three rings of fading grid
+    const paths = layerPaths();
+    for (let i = -12; i <= 12; i++) for (let j = -12; j < 12; j++) for (const dir of [0, 1]) {
+      const a = dir ? [i * 0.25, FLOOR, j * 0.25] : [j * 0.25, FLOOR, i * 0.25], b = dir ? [i * 0.25, FLOOR, (j + 1) * 0.25] : [(j + 1) * 0.25, FLOOR, i * 0.25];
+      const r = Math.hypot((a[0] + b[0]) / 2, (a[2] + b[2]) / 2), bb = r < 1.3 ? 0 : r < 2.1 ? 1 : r < 3 ? 2 : 3;
+      if (bb === band) addSeg(paths, toCam(a), toCam(b), w, h);
+    }
+    strokeLayers(paths, rgba(INK, [0.16, 0.1, 0.05][band]), [2, 0.9, 0.8]);
+  }
+  const shadow = layerPaths();                               // the tubes' shadow on the floor
+  for (const pl of CEN) for (let s = 0; s < CELLS; s++) addSeg(shadow, toCam([pl[s][0], FLOOR, pl[s][2]]), toCam([pl[s + 1][0], FLOOR, pl[s + 1][2]]), w, h);
+  LAYERS.forEach((l, i) => { l.ctx.lineJoin = 'round'; });
+  strokeLayers(shadow, rgba(INK, 0.07), [14, 6, 4]);
+}
+
+function drawTubes(w, h) {
+  const pa = PEN.a, pb = PEN.b, penEdge = pa >> 2 !== pb >> 2 ? -1 : pb === (pa >> 2) * 4 + (pa + 1) % 4 ? pa : pb;
+  const RC = RING.map(e => e.map(r => r.map(toCam)));        // every ring corner, in camera space
+  const longs = layerPaths(), rings = layerPaths(), redL = layerPaths(), redR = layerPaths();
+  for (let e = 0; e < 24; e++) {
+    const Lp = e === penEdge ? redL : longs, Rp = e === penEdge ? redR : rings;
+    for (let s = 0; s <= CELLS; s++) {
+      const R0 = RC[e][s];
+      for (let c = 0; c < 4; c++) {
+        addSeg(Rp, R0[c], R0[(c + 1) % 4], w, h);                               // the ring at this cell boundary
+        if (s < CELLS) addSeg(Lp, R0[c], RC[e][s + 1][c], w, h);               // the beam's four long edges
+      }
+    }
+  }
+  strokeLayers(longs, INKS, [2.6, 1.2, 0.9], 0.9);
+  strokeLayers(rings, INKS, [1.6, 0.7, 0.6], 0.5);
+  if (!EMBED) {                                     // the edge you're on, in red (not when embedded: nobody's driving)
+    strokeLayers(redL, '#D7261E', [3, 1.6, 1.2]);
+    strokeLayers(redR, '#D7261E', [1.8, 0.8, 0.7], 0.8);
+  }
+}
+
+// your pen: a drop line to the floor, and a callout that says where you are (always in focus)
+function drawPenMarker(w, h, pen) {
+  const L = mctx, P = project(pen, w, h);
+  if (P[2] < NEAR || EMBED) return P;                       // EMBED: no pen of your own
+  L.save(); L.strokeStyle = INKS; L.fillStyle = INKS;
+  const drop = layerPaths(); addSeg(drop, toCam(pen), toCam([pen[0], FLOOR, pen[2]]), w, h);
+  LAYERS.forEach(l => l.ctx.setLineDash([3, 4])); strokeLayers(drop, INKS, [2, 1, 1], 0.55); LAYERS.forEach(l => l.ctx.setLineDash([]));
+  const foot = layerPaths();
+  for (let i = 0; i < 32; i++) { const a0 = i / 32 * Math.PI * 2, a1 = (i + 1) / 32 * Math.PI * 2;
+    addSeg(foot, toCam([pen[0] + Math.cos(a0) * 0.08, FLOOR, pen[2] + Math.sin(a0) * 0.08]), toCam([pen[0] + Math.cos(a1) * 0.08, FLOOR, pen[2] + Math.sin(a1) * 0.08]), w, h); }
+  for (const [dx, dz] of [[0.14, 0], [0, 0.14]]) addSeg(foot, toCam([pen[0] - dx, FLOOR, pen[2] - dz]), toCam([pen[0] + dx, FLOOR, pen[2] + dz]), w, h);
+  strokeLayers(foot, INKS, [2, 1, 1], 0.55);
+  const lab = penLabel(), x = P[0] + 34, y = P[1] + 34;       // the read-out hangs below-right; your name tag sits above
+  L.lineWidth = 0.9; L.beginPath(); L.moveTo(P[0] + 8, P[1] + 8); L.lineTo(x, y); L.lineTo(x + 128, y); L.stroke();
+  L.font = '500 10px "Geist Mono", ui-monospace, Menlo, monospace'; L.fillText(`EDGE ${lab.edge}  CELL ${lab.cell}/24`, x + 2, y - 5);
+  L.font = '400 9.5px "Geist Mono", ui-monospace, Menlo, monospace'; L.globalAlpha = 0.6;
+  const sg = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+  L.fillText(`x${sg(pen[0])} y${sg(pen[1])} z${sg(pen[2])}`, x + 2, y + 12);
+  L.restore();
+  return P;
+}
+function penLabel() { return { cell: String(Math.min(24, Math.floor(PEN.s) + 1)).padStart(2, '0'), edge: PEN.a + '→' + PEN.b }; }
+
+// ================= liquid: glossy black metaballs that fill the tubes as you draw =================
+// Every cell the pen passes through takes on liquid. Inside each square frame (a closed loop of
+// 96 cells) it flows downhill and pools in the low corners. It stays inside the beams: a cell holds
+// one box-full, and anything more is pushed along to its neighbours. It's drawn as metaballs on the GPU: each blob adds to a
+// field, and the surface is where the field crosses a threshold, so neighbours merge into one
+// liquid. It's lit like the references: near-black with a green sheen, hard white studio windows.
+const LIQ = { fill: CEN.map(() => new Float32Array(CELLS)), col: CEN.map(() => new Float32Array(CELLS * 3)), draining: false };
+function transfer(ea, sa, eb, sb, q) {                       // move q of liquid from one cell to another; colours mix by volume
+  if (q < 0) { [ea, sa, eb, sb, q] = [eb, sb, ea, sa, -q]; }
+  if (q <= 0) return;
+  const vb = LIQ.fill[eb][sb], CA = LIQ.col[ea], CB = LIQ.col[eb], nv = vb + q;
+  for (let k = 0; k < 3; k++) CB[sb * 3 + k] = (CB[sb * 3 + k] * vb + CA[sa * 3 + k] * q) / nv;
+  LIQ.fill[ea][sa] -= q; LIQ.fill[eb][sb] = nv;
+}
+const CELL_Y = CEN.map(pl => Array.from({ length: CELLS }, (_, s) => (pl[s][1] + pl[s + 1][1]) / 2));
+function penCell(pl = ME) {                                  // [edge, cell] a pen is in
+  const pa = pl.pen.a, pb = pl.pen.b;
+  if (pa >> 2 !== pb >> 2) return null;
+  const e = pb === (pa >> 2) * 4 + (pa + 1) % 4 ? pa : pb, s = Math.max(0, Math.min(CELLS - 1, Math.floor(pl.pen.s)));
+  return [e, e === pa ? s : CELLS - 1 - s];
+}
+function pour(amount, pl = ME) {                              // liquid, in this person's colour, into their pen's cell
+  if (pl === ME && typeof NET !== 'undefined') NET.pour += amount;   // shared with everyone in the next update
+  LIQ.draining = false;
+  const c = penCell(pl); if (!c) return;
+  const [e, s] = c, v = LIQ.fill[e][s], add = Math.max(0, Math.min(2, v + amount) - v), C = LIQ.col[e];
+  if (add <= 0) return;
+  for (let k = 0; k < 3; k++) C[s * 3 + k] = (C[s * 3 + k] * v + pl.color[k] * add) / (v + add);
+  LIQ.fill[e][s] = v + add;
+}
+function stepLiquid(dt) {
+  if (LIQ.draining) {                                        // clearing: everything drains away
+    for (const f of LIQ.fill) for (let s = 0; s < CELLS; s++) f[s] *= Math.exp(-dt * 2.5);
+    return;
+  }
+  const h = Math.min(dt, 1 / 30);
+  let total = 0; for (const f of LIQ.fill) for (let s = 0; s < CELLS; s++) total += f[s];
+  const LIQ_MAX = 0.5 * 24 * CELLS;                          // past half full, it slowly drains away
+  if (total > LIQ_MAX) { const k = 1 - Math.min(0.5, (total - LIQ_MAX) / total) * h * 1.5; for (const f of LIQ.fill) for (let s = 0; s < CELLS; s++) f[s] *= k; }
+  for (let f = 0; f < 6; f++) {                              // each frame is one loop of 96 cells
+    const at = i => [f * 4 + (i / CELLS | 0), i % CELLS];
+    for (let i = 0; i < 96; i++) {
+      const [ea, sa] = at(i), [eb, sb] = at((i + 1) % 96), A = LIQ.fill[ea], B = LIQ.fill[eb];
+      const a = A[sa], b = B[sb], ya = CELL_Y[ea][sa], yb = CELL_Y[eb][sb];
+      let q = 0.6 * (a - b);                                 // it evens out...
+      if (ya > yb) q += 7 * (ya - yb) * a * Math.max(0, 1 - b);   // ...and runs downhill, until the cell below is full
+      else q -= 7 * (yb - ya) * b * Math.max(0, 1 - a);
+      q *= h; q = q > 0 ? Math.min(q, a * 0.5) : Math.max(q, -b * 0.5);
+      transfer(ea, sa, eb, sb, q);
+    }
+  }
+  for (let f = 0; f < 6; f++) {                              // a cell holds one box-full: the rest moves along
+    const at = i => [f * 4 + (((i + 96) % 96) / CELLS | 0), ((i + 96) % 96) % CELLS];
+    for (let i = 0; i < 96; i++) {
+      const [e, c] = at(i), v = LIQ.fill[e][c]; if (v <= 1) continue;
+      const [ep, cp] = at(i - 1), [en, cn] = at(i + 1), x = v - 1;
+      transfer(e, c, ep, cp, x / 2); transfer(e, c, en, cn, x / 2);
+    }
+  }
+}
+
+// ---- the GPU part ----
+const glc = document.createElement('canvas');
+const gl = glc.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
+const GLQ = {};
+if (gl) {
+  const floatOK = gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float');
+  GLQ.scale = floatOK ? 1 : 0.25;                            // 8-bit fallback: keep the field under 1
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
+  const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); return p; };
+  GLQ.splat = prog(`#version 300 es
+    in vec2 corner; in vec3 ball; in vec3 tint; uniform vec2 res; uniform float s; out vec2 v; out vec3 vc;
+    void main() { v = corner; vc = tint; vec2 p = (ball.xy + corner * ball.z) * s; gl_Position = vec4(p / res * 2.0 - 1.0, 0, 1); gl_Position.y = -gl_Position.y; }`,
+  `#version 300 es
+    precision highp float; in vec2 v; in vec3 vc; uniform float k; out vec4 o;
+    void main() { float d = dot(v, v); if (d >= 1.0) discard; float f = 1.0 - d, w = f * f * f * k; o = vec4(w, w * vc); }`);   // field, and colour weighted by it
+  GLQ.shade = prog(`#version 300 es
+    in vec2 corner; void main() { gl_Position = vec4(corner, 0, 1); }`,
+  `#version 300 es
+    precision highp float; uniform sampler2D F; uniform float k, t; out vec4 o;
+    float f(ivec2 p) { return texelFetch(F, p, 0).r / k; }
+    void main() {
+      ivec2 p = ivec2(gl_FragCoord.xy);
+      vec4 F4 = texelFetch(F, p, 0); vec3 base = F4.gba / max(F4.r, 1e-5);   // this spot's liquid colour
+      float v = f(p), T = 0.35, aa = fwidth(v) + 1e-4, a = smoothstep(T - aa, T + aa, v);
+      if (a <= 0.0) { o = vec4(0); return; }
+      float gx = f(p + ivec2(2, 0)) - f(p - ivec2(2, 0)), gy = f(p + ivec2(0, 2)) - f(p - ivec2(0, 2));
+      vec3 n = normalize(vec3(-gx, -gy, 0.22 * clamp(v - T, 0.0, 1.5) + 0.05));
+      vec3 r = reflect(vec3(0, 0, -1), n);
+      // a studio: one big soft window up-left (it wavers, like it's reflected in something alive), a thin strip on the right
+      float win = smoothstep(0.46, 0.50, r.y * 0.85 - r.x * 0.55 + 0.12 * sin(r.x * 4.0 + t * 0.4) + 0.08 * sin(r.y * 7.0 - t * 0.3));
+      float strip = smoothstep(0.86, 0.89, r.x) * smoothstep(-0.5, 0.1, r.y);
+      float spec = max(win, strip);
+      float diff = clamp(dot(n, normalize(vec3(-0.4, 0.6, 0.7))), 0.0, 1.0), fres = pow(1.0 - n.z, 2.5);
+      vec3 body = base * 0.14 + 0.01, green = base;
+      vec3 col = body + green * step(0.62, diff) * 0.55 + green * step(0.45, fres) * 0.7;   // hard steps, like the posterised refs
+      col = mix(col, vec3(0.96, 0.97, 0.95), spec);
+      col = mix(col, body, 1.0 - smoothstep(T + 0.02, T + 0.09, v));      // a hard dark rim holds the silhouette on paper
+      o = vec4(col * a, a);
+    }`);
+  const quad = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+  GLQ.quadBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GLQ.quadBuf); gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+  GLQ.ballBuf = gl.createBuffer(); GLQ.balls = new Float32Array(6 * 2400);
+  GLQ.vaoS = gl.createVertexArray(); gl.bindVertexArray(GLQ.vaoS);
+  let loc = gl.getAttribLocation(GLQ.splat, 'corner'); gl.bindBuffer(gl.ARRAY_BUFFER, GLQ.quadBuf); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  loc = gl.getAttribLocation(GLQ.splat, 'ball'); gl.bindBuffer(gl.ARRAY_BUFFER, GLQ.ballBuf); gl.bufferData(gl.ARRAY_BUFFER, GLQ.balls.byteLength, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 24, 0); gl.vertexAttribDivisor(loc, 1);
+  loc = gl.getAttribLocation(GLQ.splat, 'tint');
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 24, 12); gl.vertexAttribDivisor(loc, 1);
+  GLQ.vaoQ = gl.createVertexArray(); gl.bindVertexArray(GLQ.vaoQ);
+  loc = gl.getAttribLocation(GLQ.shade, 'corner'); gl.bindBuffer(gl.ARRAY_BUFFER, GLQ.quadBuf); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+  GLQ.tex = gl.createTexture(); GLQ.fbo = gl.createFramebuffer(); GLQ.w = GLQ.h = 0; GLQ.float = !!floatOK;
+}
+function sizeGL(w, h) {
+  if (GLQ.w === w && GLQ.h === h) return;
+  GLQ.w = glc.width = w; GLQ.h = glc.height = h;
+  gl.bindTexture(gl.TEXTURE_2D, GLQ.tex);
+  if (GLQ.float) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, GLQ.fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, GLQ.tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// every blob this frame, in screen space: [x, y, support radius] (the visible edge sits at ~0.54 of
+// it), sorted into the depth-of-field layers
+const BALL_MAX = 2400, LIQ_R = 0.85;                      // LIQ_R: blob size as a share of the beam's half-width
+const BALLS = LAYERS.map(() => ({ a: new Float32Array(6 * BALL_MAX), n: 0 }));   // x, y, radius, r, g, b
+function liquidBalls(w, h, t) {
+  for (const b of BALLS) b.n = 0;
+  const push = (p, r, c, ci) => { const q = project(p, w, h); if (q[2] < NEAR * 2) return;
+    const R = r * q[3] * 1.85; if (R < 0.6) return;
+    const b = BALLS[layerOf(q[2])]; if (b.n >= BALL_MAX) return;
+    const o = b.n * 6; b.a[o] = q[0]; b.a[o + 1] = q[1]; b.a[o + 2] = R; b.a[o + 3] = c[ci]; b.a[o + 4] = c[ci + 1]; b.a[o + 5] = c[ci + 2]; b.n++; };
+  for (let e = 0; e < 24; e++) {
+    const f = LIQ.fill[e], U = FN[e >> 2];
+    for (let s = 0; s < CELLS; s++) {
+      const v = Math.min(f[s], 1); if (v < 0.03) continue;
+      const A = CEN[e][s], B = CEN[e][s + 1];
+      for (const u of [0.25, 0.75]) {                          // two blobs per cell, sized to stay inside the beam
+        const ph = e * 1.7 + (s + u) * 0.9;
+        push(v3.add(A, v3.mul(v3.sub(B, A), u)), BEAM * LIQ_R * Math.sqrt(v) * (1 + 0.05 * Math.sin(t * 3 + ph * 1.3)), LIQ.col[e], s * 3);
+      }
+    }
+  }
+}
+
+function drawLiquid(w, h, t) {
+  liquidBalls(w, h, t);
+  LAYERS.forEach((l, li) => {
+    const B = BALLS[li]; if (!B.n) return;
+    const ctx = l.ctx;
+    if (!gl) {                                               // no WebGL2: plain ink blobs
+      ctx.fillStyle = INKS; ctx.beginPath();
+      for (let i = 0; i < B.n; i++) { const o = i * 6, r = B.a[o + 2] * 0.54;
+        ctx.fillStyle = `rgb(${B.a[o + 3] * 90 | 0},${B.a[o + 4] * 90 | 0},${B.a[o + 5] * 90 | 0})`; ctx.beginPath(); ctx.arc(B.a[o], B.a[o + 1], r, 0, 7); ctx.fill(); }
+      return;
+    }
+    const lr = li === 1 ? 0.7 : 0.3;                         // the liquid in focus at 0.7 resolution, soft layers at 0.3
+    const W = Math.max(1, Math.round(w * lr)), H = Math.max(1, Math.round(h * lr));
+    sizeGL(Math.max(GLQ.w, Math.round(w * 0.7)), Math.max(GLQ.h, Math.round(h * 0.7)));   // one buffer, used corner-first
+    gl.bindFramebuffer(gl.FRAMEBUFFER, GLQ.fbo); gl.viewport(0, 0, W, H);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(GLQ.splat); gl.uniform2f(gl.getUniformLocation(GLQ.splat, 'res'), W, H); gl.uniform1f(gl.getUniformLocation(GLQ.splat, 's'), lr); gl.uniform1f(gl.getUniformLocation(GLQ.splat, 'k'), GLQ.scale);
+    gl.bindVertexArray(GLQ.vaoS);
+    gl.bindBuffer(gl.ARRAY_BUFFER, GLQ.ballBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, B.a, 0, B.n * 6);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, B.n);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+    gl.disable(gl.BLEND); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(GLQ.shade); gl.bindVertexArray(GLQ.vaoQ);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, GLQ.tex);
+    gl.uniform1i(gl.getUniformLocation(GLQ.shade, 'F'), 0); gl.uniform1f(gl.getUniformLocation(GLQ.shade, 'k'), GLQ.scale); gl.uniform1f(gl.getUniformLocation(GLQ.shade, 't'), t);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindVertexArray(null);
+    ctx.drawImage(glc, 0, glc.height - H, W, H, 0, 0, w, h); // copied right away, so the next layer can reuse the GPU canvas
+  });
+}
+
+// ================= simulated people =================
+// Each one enters, picks a liquid colour, gets the next brush, and then travels the lines like
+// someone turning the knobs: runs along a tube, spirals round it, drifts out and back, hops to
+// another line now and then. Everything they pour is in their colour and mixes with yours.
+const PEOPLE = [], ROOM_MAX = 30;
+const NAMES = ['Mika', 'Juno', 'Ravi', 'Oona', 'Theo', 'Lux', 'Pia', 'Sol', 'Noor', 'Ezra', 'Ines', 'Kai', 'Zoe', 'Omar', 'Lena',
+  'Arlo', 'Maya', 'Finn', 'Isla', 'Jude', 'Nia', 'Remy', 'Sage', 'Tove', 'Yuki', 'Cleo', 'Dev', 'Ida', 'Milo', 'Rhea', 'Ash', 'Bea'];
+const TRAIL_BUDGET = 5000;                                   // points of drawing shared by everyone else, so a full class stays smooth
+function addPerson() {
+  if (PEOPLE.length >= ROOM_MAX) { toast(`The room is full (${ROOM_MAX} people)`); return; }
+  const taken = new Set([ME.colorName, ...PEOPLE.map(p => p.colorName)]);
+  const free = LIQ_COLORS.filter(c => !taken.has(c.name));   // everyone gets their own colour until all 24 are taken
+  const col = free.length ? free[Math.floor(Math.random() * free.length)] : LIQ_COLORS[Math.floor(Math.random() * LIQ_COLORS.length)];
+  const names = NAMES.filter(n => !PEOPLE.some(p => p.name === n));
+  const name = names.length ? names[Math.floor(Math.random() * names.length)] : 'Guest ' + (PEOPLE.length + 1);
+  let e; do { e = Math.floor(Math.random() * 24); } while (e >> 2 === PEN.a >> 2);   // start on a different frame
+  const pl = { name, color: col.rgb, colorName: col.name, brush: (brush + PEOPLE.length + 1) % BRUSHES.length, inst: SND.pickInst(),
+    pen: { a: e, b: (e >> 2) * 4 + (e + 1) % 4, s: Math.random() * CELLS, ang: Math.random() * 6.28, rad: 0.075 },
+    visits: {}, strokes: [], trail: [], cur: null, smooth: null, plan: null, acc: 0,
+    rate: 0.08 + Math.random() * 0.06, startAt: performance.now() + 1700 };
+  resetVisits(pl); pl.cur = penPos(pl.pen); pl.trail = [[...pl.cur]]; pl.smooth = [...pl.cur];
+  PEOPLE.push(pl); lastInputAt = performance.now();
+  joinCard(pl); renderPeople();
+}
+function addClass(n = 20) {                                  // a whole class, arriving one after another
+  for (let i = 0; i < n; i++) setTimeout(addPerson, i * 500);
+}
+function botClick(pl) {                                      // what a person does next, one knob click at a time
+  if (!pl.plan || pl.plan.left <= 0) {
+    const r = Math.random(), keep = pl.plan && pl.plan.knob === 0 && Math.random() < 0.8;
+    if (r < 0.6) pl.plan = { knob: 0, dir: keep ? pl.plan.dir : (Math.random() < 0.75 ? 1 : -1), left: 15 + Math.random() * 60 };
+    else if (r < 0.85) pl.plan = { knob: 1, dir: Math.random() < 0.5 ? 1 : -1, left: 8 + Math.random() * 24 };
+    else if (r < 0.97) pl.plan = { knob: 2, dir: pl.pen.rad > 0.25 ? -1 : 1, left: 3 + Math.random() * 8 };
+    else { hop(1, pl); pl.plan = null; return; }
+  }
+  movePen(pl, pl.plan.knob, pl.plan.dir); pl.plan.left--; SND.crowd(pl);
+}
+function stepPeople(dt, now) {
+  for (const pl of PEOPLE) {
+    if (pl.remote) { if (!pl.seen) continue; }              // a real person: moved by their updates
+    else {
+      if (now < pl.startAt) continue;                        // still choosing their colour
+      pl.acc += dt;
+      while (pl.acc > pl.rate) { pl.acc -= pl.rate; botClick(pl); }
+    }
+    const ks = 1 - Math.exp(-dt * 14);
+    pl.smooth = pl.smooth.map((v, i) => v + (pl.cur[i] - v) * ks);
+    const cap = EMBED ? EMBED_TRAIL : Math.max(120, Math.min(600, TRAIL_BUDGET / PEOPLE.length));   // the more people, the shorter each trail
+    let total = pl.trail.length + pl.strokes.reduce((n, st) => n + st.length, 0);   // keep their drawing light:
+    while (total > cap && pl.strokes.length) total -= pl.strokes.shift().length;     // the oldest strokes fade out
+    if (pl.trail.length > cap) { pl.trail.splice(0, pl.trail.length - cap); pl.thinAt = 0; }
+  }
+}
+
+// ---- drawing any player's strokes (split into depth layers, and wherever they pass behind you) ----
+function drawStrokes(pl, w, h, t) {
+  const B = BRUSHES[pl.brush];
+  for (const stroke of [...pl.strokes, pl.trail]) {
+    const all = stroke.map(p => { const q = project(p, w, h); q[4] = p[3] || 0; return q; });   // q[4]: loudness (Wave)
+    if (stroke === pl.trail && all.length) all[all.length - 1] = project(pl.smooth, w, h);
+    // Skip points within 2.5 px of the last one kept: on screen the line looks the same, but the brush has far
+    // fewer points to draw (a long drawing seen from afar collapses to a handful). Ends are always kept.
+    const pts = [];
+    for (let i = 0; i < all.length; i++) {
+      const q = all[i], last = pts[pts.length - 1];
+      if (!last || i === all.length - 1 || q[2] < NEAR || last[2] < NEAR || Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) >= 2.5) pts.push(q);
+    }
+    let run = [], runL = -1;
+    const flush = () => { if (run.length > 1 && runL >= 0) B.draw(LAYERS[runL].ctx, run, t, 0); };
+    for (const q of pts) {
+      if (q[2] < NEAR) { flush(); run = []; runL = -1; continue; }
+      const l = layerOf(q[2]);
+      if (l !== runL && run.length) { run.push(q); flush(); run = [run[run.length - 1]]; }
+      else run.push(q);
+      runL = l;
+    }
+    flush();
+  }
+  for (const l of LAYERS) { l.ctx.lineCap = 'round'; l.ctx.lineJoin = 'round'; l.ctx.setLineDash([]); l.ctx.globalAlpha = 1; }
+}
+const cssRGB = (c, f = 1) => `rgb(${Math.round(c[0] * 255 * f)},${Math.round(c[1] * 255 * f)},${Math.round(c[2] * 255 * f)})`;
+function drawPersonMarker(pl, w, h) {                        // a small dot in their colour
+  const P = project(pl.smooth, w, h); if (P[2] < NEAR) return;
+  const L = LAYERS[layerOf(P[2])].ctx;
+  L.fillStyle = cssRGB(pl.color); L.strokeStyle = INKS; L.lineWidth = 1.2;
+  L.beginPath(); L.arc(P[0], P[1], 5, 0, 7); L.fill(); L.stroke();
+}                                                            // (their name is on their tag: see placeFlags)
+
+// ---- entering: your colour picker, people's join cards, the list of who's here ----
+// ================= ENTRY SCREEN: choose your liquid =================
+// This file's own login, in place of the spec's #login-overlay (see the note at the top of the file).
+// Knob 1 / ← → browses, a press / click / Enter goes in. It starts on a random colour, so going straight in
+// gives you a random one. If the address names a class server, going in also joins it (see JOIN_URL).
+const JOIN = { open: true, i: Math.floor(Math.random() * LIQ_COLORS.length) };
+function renderPicker() {
+  document.getElementById('swatches').innerHTML = LIQ_COLORS.map((c, i) =>
+    `<button class="pick${i === JOIN.i ? ' on' : ''}" data-i="${i}">${swatchHTML(c, i === JOIN.i)}<span>${c.name}</span></button>`).join('');
+  document.querySelectorAll('#swatches .pick').forEach(b => b.onclick = () => { JOIN.i = +b.dataset.i; confirmColor(); });
+}
+function confirmColor() {
+  if (!JOIN.open) return;
+  const c = LIQ_COLORS[JOIN.i]; ME.color = c.rgb; ME.colorName = c.name;
+  JOIN.open = false; document.getElementById('join').classList.add('gone');
+  if (JOIN.changing) { JOIN.changing = false; renderPeople(); SND.pick(JOIN.i); return; }   // just a new colour: keep your seat
+  ME.inst = SND.pickInst();                                  // your seat in the orchestra, dealt, not chosen
+  renderPeople(); SND.join();
+  if (JOIN_URL.server && JOIN_URL.name) {                   // the spec's connect, with the colour just chosen
+    const hex = '#' + c.rgb.map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+    connectToServer(JOIN_URL.server, JOIN_URL.name, hex);
+  }
+}
+function swatchHTML(c, on) {
+  const base = cssRGB(c.rgb), deep = cssRGB(c.rgb, 0.14);
+  return `<i class="sw${on ? ' on' : ''}" style="background:radial-gradient(circle at 34% 30%, #fff 0 9%, ${base} 24%, ${deep} 78%)"></i>`;
+}
+function changeColor() {                                    // reopen the entry screen, just to pick a new liquid colour
+  if (JOIN.open) return;
+  JOIN.open = true; JOIN.changing = true; JOIN.i = Math.max(0, LIQ_COLORS.findIndex(c => c.name === ME.colorName));
+  document.getElementById('joinwho').textContent = 'new colour · your line keeps its old one';
+  renderPicker(); document.getElementById('join').classList.remove('gone');
+}
+function newInstrument() {                                  // a fresh seat in the orchestra, dealt again (never the same one)
+  if (JOIN.open) return;
+  const was = ME.inst; ME.inst = undefined;
+  let next = SND.pickInst(); for (let k = 0; k < 12 && next === was; k++) next = SND.pickInst();
+  ME.inst = next; renderPeople(); SND.join();
+  toast(`<b>You</b> now play the ${SND.instOf(ME).name}`, 2600);
+}
+function renderPeople() {                                    // you, then everyone else as a row of liquid dots
+  const me = `<div class="who">${swatchHTML({ rgb: ME.color })}<b>You</b><span>${ME.colorName} ${typeof SND !== 'undefined' ? SND.instOf(ME).name : ''} · ${BRUSHES[ME.brush].name}</span></div>`;
+  const dots = PEOPLE.map(pl => `<i class="sw" title="${pl.name} · ${pl.colorName} · ${BRUSHES[pl.brush].name}" style="background:radial-gradient(circle at 34% 30%, #fff 0 9%, ${cssRGB(pl.color)} 24%, ${cssRGB(pl.color, 0.14)} 78%)"></i>`).join('');
+  document.getElementById('people').innerHTML = me + (PEOPLE.length ? `<div class="who"><span>${PEOPLE.length} ${PEOPLE.length === 1 ? 'other' : 'others'} here</span></div><div class="crowd">${dots}</div>` : '');
+}
+function toast(html, ms = 4200) {
+  const el = document.createElement('div'); el.className = 'toast'; el.innerHTML = html;
+  const box = document.getElementById('toasts'); box.appendChild(el);
+  while (box.children.length > 3) box.firstElementChild.remove(); setTimeout(() => el.classList.add('gone'), ms); setTimeout(() => el.remove(), ms + 800);
+  return el;
+}
+function joinCard(pl) {                                      // they browse the colours for a moment, then choose
+  const el = toast(`<b>${pl.name}</b> is choosing a liquid… <span class="row">${LIQ_COLORS.map(c => swatchHTML(c, false)).join('')}</span>`, 3200);
+  const sws = el.querySelectorAll('.sw'), pick = LIQ_COLORS.findIndex(c => c.name === pl.colorName);
+  let k = 0; const tick = setInterval(() => { sws.forEach((s, i) => s.classList.toggle('on', i === k % sws.length)); k++; }, 140);
+  setTimeout(() => { clearInterval(tick); sws.forEach((s, i) => s.classList.toggle('on', i === pick));
+    el.firstChild.nextSibling.textContent = ` joined · ${pl.colorName} ${SND.instOf(pl).name}, ${BRUSHES[pl.brush].name} `; SND.arrive(pl); }, 1600);
+}
+
+function renderScene(w, h, t, dt) {
+  for (const l of LAYERS) { l.ctx.setTransform(1, 0, 0, 1, 0, 0); l.ctx.clearRect(0, 0, l.ctx.canvas.width, l.ctx.canvas.height); l.ctx.setTransform(l.k, 0, 0, l.k, 0, 0); }
+  drawFloor(w, h);
+  stepLiquid(dt);
+  drawLiquid(w, h, t);                                       // under the wires: it's inside the tubes
+  drawTubes(w, h);
+  for (const pl of PEOPLE) { if (pl.remote && !pl.seen) continue; drawStrokes(pl, w, h, t); drawPersonMarker(pl, w, h); }   // everyone else
+  drawStrokes(ME, w, h, t);                                  // you, on top
+
+  // the pen, small against the shape — where you are in 3D
+  const P = drawPenMarker(w, h, penSmooth), L = mctx;
+  if (P[2] < NEAR) return;
+  penScreen = P;
+  if (!EMBED) { L.save(); L.translate(P[0], P[1]); L.rotate(t * 0.6); L.drawImage(SPARKLE, -11, -11, 22, 22); L.restore(); }
+  if (!EMBED) {                                                          // your dot: your liquid colour, ink rim, a slow pulse around it
+    const mc = ME.color.map(v => Math.round(v * 255)), pulse = (t * 0.8) % 1;
+    L.strokeStyle = `rgba(20,20,20,${0.5 * (1 - pulse)})`; L.lineWidth = 1.5; L.beginPath(); L.arc(P[0], P[1], 10 + pulse * 16, 0, 7); L.stroke();
+    L.fillStyle = '#fff'; L.beginPath(); L.arc(P[0], P[1], 10, 0, 7); L.fill();                 // a white halo: it reads on any liquid
+    L.fillStyle = rgba(mc, 1); L.strokeStyle = INKS; L.lineWidth = 2; L.beginPath(); L.arc(P[0], P[1], 7, 0, 7); L.fill(); L.stroke();
+    L.fillStyle = 'rgba(255,255,255,.85)'; L.beginPath(); L.arc(P[0] - 2, P[1] - 2, 1.7, 0, 7); L.fill();
+  }
+  L.lineWidth = 1;                                           // click ripples: thin rings, calm feedback
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i]; r.age += dt;
+    if (r.age > 0.9) { ripples.splice(i, 1); continue; }
+    if (r.age < 0) continue;
+    const f = r.age / 0.9;
+    L.strokeStyle = rgba(r.c, 0.6 * (1 - f)); L.beginPath(); L.arc(P[0], P[1], 6 + f * 24, 0, 7); L.stroke();
+  }
+}
+
+// the little OLED: the frames' centre lines, your line, the pen — seen from outside
+function render(ctx, w, h, o) {
+  ctx.fillStyle = o.bg; ctx.fillRect(0, 0, w, h);
+  const scale = Math.min(w, h) * o.size;
+  ctx.lineCap = 'round'; ctx.lineWidth = o.cubeW; ctx.strokeStyle = o.cube; ctx.beginPath();
+  for (let f = 0; f < 6; f++) for (let j = 0; j <= 4; j++) { const q = projectOverview(FV[f * 4 + j % 4], w, h, scale, o.xs); j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
+  ctx.stroke();
+  ctx.lineWidth = o.lineW; ctx.strokeStyle = o.line; ctx.lineJoin = 'round'; ctx.beginPath();
+  for (const stroke of [...S.strokes, S.trail]) stroke.forEach((p, i) => { const q = projectOverview(p, w, h, scale, o.xs); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
+  ctx.stroke();
+  const c = projectOverview(S.cur, w, h, scale, o.xs);
+  ctx.fillStyle = o.dot; ctx.beginPath(); ctx.arc(c[0], c[1], o.dotR, 0, 7); ctx.fill();
+}
+
+function draw() {
+  const w = innerWidth, h = innerHeight, now = performance.now(), t = now / 1000;
+  const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
+  orbitKeys(dt);
+  const ks = 1 - Math.exp(-dt * 14);                         // pen glides, never jumps
+  penSmooth = penSmooth.map((v, i) => v + (S.cur[i] - v) * ks);
+  stepPeople(dt, now);
+  setCam(t, dt, w, h);
+  renderScene(w, h, t, dt);
+  compositeSoft();
+  placeFlags(w, h);
+  const lab = penLabel(); document.getElementById('penlab').textContent = `edge ${lab.edge} · cell ${lab.cell}/24`;
+
+  oled.style.display = oledH ? '' : 'none';   // no OLED plugged in: hide the empty box
+  if (!oledH) return;   // haven't heard the board's real screen size yet — don't guess and double the image
+  if (off.height !== oledH) {   // first frame, or the board's screen size changed
+    off.width = 128; off.height = oledH;
+    oled.width = 128; oled.height = oledH; oled.style.height = (oledH * 2) + 'px';
+  }
+  const xs = oledH === 32 ? 1.5 : 1, size = oledH === 32 ? 0.34 : 0.36;
+  render(fctx, 128, oledH, { xs, bg:'#000', size, cube:'#fff', cubeW:1, line:'#fff', lineW:1, dot:'#fff', dotR:1.5 });
+  const img = fctx.getImageData(0,0,128,oledH).data;
+  const packed = new Uint8Array(128 * oledH / 8);
+  const show = octx.createImageData(128,oledH);
+  for (let y=0;y<oledH;y++) for (let x=0;x<128;x++) {
+    const on = img[(y*128+x)*4] > 90;
+    if (on) packed[(y>>3)*128 + x] |= 1 << (y & 7);   // SSD1306 page layout
+    const o = (y*128+x)*4; show.data[o]=show.data[o+1]=show.data[o+2]= on?255:0; show.data[o+3]=255;
+  }
+  octx.putImageData(show,0,0);
+  sendFrame(packed);
+}
+let lastInputAt = 0, lastDrawAt = 0;
+function loop(now = performance.now()) {
+  requestAnimationFrame(loop);
+  if (EMBED && EMBED_VIEW.paused) return;                   // EMBED: faded out on the page, so don't draw
+  netSend();                                                 // every frame; sendUpdate keeps it to ~20/s
+  const busy = now - lastInputAt < 5000 || LIQ.draining || PEOPLE.length > 0;
+  // 30 fps while drawing, 12 when idle — and only 10 in a window you're not using (a second tab or window
+  // left open), unless it's the one driving the controller's screens
+  const background = !EMBED && !document.hasFocus() && !(typeof tabOwner !== 'undefined' && tabOwner && typeof TAB_ID !== 'undefined' && writer);
+  const fps = background ? 10 : busy ? 30 : 12;
+  if (now - lastDrawAt < 1000 / fps - 2) return;
+  if (EMBED) { S.yaw += 0.0035; S.dirty = true; }       // EMBED: the camera slowly circles
+  lastDrawAt = now; draw();
+}
+
+// ================= sound: an orchestra, one instrument per liquid colour =================
+// All synthesised (no files). Everyone who comes in is dealt an instrument, like a seat in an orchestra — at
+// random, but from whichever section the room needs most (foundation, harmony, melody, colour, in an
+// orchestra's proportions), so any number of people stays balanced. Your colour is only your liquid.
+// Four rules keep a room of 20+ beautiful:
+//   the deal    instruments are dealt to keep the sections balanced (pickInst), not chosen
+//   one harmony  everyone plays inside the same slow chord progression in D (Dmaj9 → Bm11 → Gmaj9 → A6sus),
+//                so any mix of notes is consonant
+//   one pulse    everyone lands on a shared beat (76 bpm): other people on eighth notes, you on sixteenths —
+//                a steady turn becomes a rhythmic line in time with the room; the first note of a move is instant
+//   a conductor  each beat takes only a few notes, each person gets quieter and sparser as the room fills,
+//                and held instruments (strings, choir, organ) speak less often but swell underneath
+// Knob 1 plays your instrument (higher the further up the shape you climb), and your brush adds its own touch
+// on top — still inside the chord: Ribbon a soft fifth that sings along, Blueprint a tiny high ping, Pixel two
+// stepped chip notes, Notation the scratch of a nib and a quick flick up, Wave a pure sine a twelfth above. Knob 2 ticks, knob 3 breathes;
+// pouring bubbles; hops, clears and Shift have their own gestures. The first click or key press turns it on.
+const SND = (() => {
+  let ac = null, master, dry, wet, noiseBuf, voices = 0, justStarted = false, on = true;
+  const lastAt = [0, 0, 0], slots = new Map();
+  try { on = localStorage.getItem('etch-sound') !== 'off'; } catch (e) {}
+
+  // ---- the shared harmony and pulse ----
+  const BPM = 76, EIGHTH = 60 / BPM / 2, SIXTEENTH = EIGHTH / 2, CHORD_LEN = 60 / BPM * 8;   // a chord every two bars
+  const mine = [{ click: -9, t: -9 }, { click: -9, t: -9 }];   // knobs 1 and 2: when you last clicked, and when it last sounded
+  function onGrid(k, now) {                                   // when your next note should sound, or null to skip this click
+    const g = mine[k], moving = now - g.click < 0.6; g.click = now;
+    if (!moving) { g.t = now; return now; }                   // starting to move: play at once, so it feels immediate
+    let t = Math.ceil((now + 0.004) / SIXTEENTH) * SIXTEENTH;  // moving: lock to the room's sixteenth-note grid…
+    if (t < g.t + SIXTEENTH * 0.75) t += SIXTEENTH;           // …never two notes in one step (no flams)
+    if (t > now + SIXTEENTH * 1.6) return null;               // already a note queued: this click just rides along
+    g.t = t; return t;
+  }
+  const CHORDS = [ { root: 2,  pcs: [2, 6, 9, 1, 4] },                        // D  F# A C# E   Dmaj9
+                   { root: 11, pcs: [11, 2, 6, 9, 4] },                       // B  D  F# A  E   Bm11
+                   { root: 7,  pcs: [7, 11, 2, 6, 9] },                       // G  B  D  F# A   Gmaj9
+                   { root: 9,  pcs: [9, 2, 4, 6, 11] } ];                     // A  D  E  F# B   A6sus
+  const chordIndex = t => Math.floor(t / CHORD_LEN) % CHORDS.length;
+  const chordAt = t => CHORDS[chordIndex(t)];
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  function snap(m, pcs, lo, hi) {                                              // nearest note of the chord, in range
+    m = Math.max(lo, Math.min(hi, Math.round(m)));
+    for (let d = 0; d < 12; d++) for (const s of [m - d, m + d])
+      if (s >= lo && s <= hi && pcs.includes(((s % 12) + 12) % 12)) return s;
+    return m;
+  }
+
+  // ---- building blocks ----
+  function out(pan, send) {                                    // (a zero-size window gives no pan: centre)                                     // a voice's way out: panned, part of it into the hall
+    const g = ac.createGain(), s = ac.createGain();
+    if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0; g.connect(p); p.connect(dry); }
+    else g.connect(dry);
+    s.gain.value = send; g.connect(s); s.connect(wet);
+    return g;
+  }
+  function filt(type, f, q, dest, to, time, t) {                // a filter, optionally sweeping from f to `to`
+    const n = ac.createBiquadFilter(); n.type = type; n.Q.value = q;
+    n.frequency.setValueAtTime(f, t || ac.currentTime); if (to) n.frequency.exponentialRampToValueAtTime(to, (t || ac.currentTime) + time);
+    n.connect(dest); return n;
+  }
+  // one oscillator: attack a, then hold (sustained, easing to 70%) or straight into the release r
+  function osc(type, f, t, a, hold, r, peak, dest, o = {}) {
+    const s = ac.createOscillator(), g = ac.createGain(), end = t + a + hold + r;
+    s.type = type; s.frequency.setValueAtTime(f, t); if (o.detune) s.detune.value = o.detune;
+    if (o.glide) s.frequency.exponentialRampToValueAtTime(f * o.glide, t + Math.min(0.25, a + r));
+    if (o.vib) { const l = ac.createOscillator(), lg = ac.createGain(); l.frequency.value = o.vib[0]; lg.gain.value = 0;
+      lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(o.vib[1], t + a + 0.25);      // vibrato blooms in
+      l.connect(lg); lg.connect(s.detune); l.start(t); l.stop(end + 0.05); }
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a);
+    if (hold > 0) g.gain.exponentialRampToValueAtTime(peak * 0.7, t + a + hold);
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
+    s.connect(g); g.connect(dest); s.start(t); s.stop(end + 0.05);
+    voices++; s.onended = () => voices--;
+    return s;
+  }
+  function fm(f, ratio, index, t, r, peak, dest, idxDecay) {    // two-operator FM: electric piano, bells
+    const m = ac.createOscillator(), mg = ac.createGain();
+    m.frequency.value = f * ratio; mg.gain.setValueAtTime(f * index, t); mg.gain.exponentialRampToValueAtTime(f * index * 0.02 + 0.01, t + idxDecay);
+    const c = osc('sine', f, t, 0.004, 0, r, peak, dest);
+    m.connect(mg); mg.connect(c.frequency); m.start(t); m.stop(t + r + 0.1);
+  }
+  function noise(t0, dur, peak, type, fFrom, fTo, q, dest) {   // filtered noise with a sweeping filter
+    const n = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    n.buffer = noiseBuf; n.loop = true; f.type = type; f.Q.value = q;
+    f.frequency.setValueAtTime(fFrom, t0); f.frequency.exponentialRampToValueAtTime(fTo, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + Math.min(0.01, dur / 3)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    n.connect(f); f.connect(g); g.connect(dest); n.start(t0, Math.random() * 0.5); n.stop(t0 + dur + 0.05);
+    voices++; n.onended = () => voices--;
+  }
+
+  // ---- the 24 instruments, in LIQ_COLORS order: [name, low note, high note, held?, bass?, play(f, t, vel, out, dur)] ----
+  const saws = (f, t, a, h, r, pk, d, spread, vib) => { for (const dt of [-spread, spread]) osc('sawtooth', f, t, a, h, r, pk, d, { detune: dt, vib }); };
+  const INST = [
+    ['cello', 48, 67, 1, 0, (f, t, v, o, d) => saws(f, t, 0.14, d, 0.8, 0.05 * v, filt('lowpass', 1300, 0.8, o), 5, [5, 12])],                       // Ink Green
+    ['clarinet', 55, 79, 0, 0, (f, t, v, o, d) => osc('square', f, t, 0.04, d * 0.6, 0.35, 0.045 * v, filt('lowpass', 1500, 0.9, o))],                 // Cobalt
+    ['violin', 67, 88, 1, 0, (f, t, v, o, d) => saws(f, t, 0.12, d, 0.6, 0.04 * v, filt('lowpass', 3200, 0.7, o), 6, [5.6, 14])],                     // Crimson
+    ['horn', 50, 72, 1, 0, (f, t, v, o, d) => saws(f, t, 0.09, d, 0.6, 0.055 * v, filt('lowpass', 420, 1.1, o, 1500, 0.3, t), 3)],                      // Amber
+    ['choir', 57, 76, 1, 0, (f, t, v, o, d) => { const a = filt('bandpass', 760, 4, o), b = filt('bandpass', 1150, 5, o);                              // Violet
+        for (const dt of [-8, 8]) { osc('sawtooth', f, t, 0.35, d, 1.2, 0.09 * v, a, { detune: dt, vib: [5, 10] }); osc('sawtooth', f, t, 0.35, d, 1.2, 0.06 * v, b, { detune: dt }); } }],
+    ['glockenspiel', 79, 100, 0, 0, (f, t, v, o) => { osc('sine', f, t, 0.002, 0, 0.9, 0.06 * v, o); osc('sine', f * 2.76, t, 0.001, 0, 0.25, 0.02 * v, o); }],   // Chrome
+    ['pizzicato', 55, 79, 0, 0, (f, t, v, o) => osc('sawtooth', f, t, 0.004, 0, 0.28, 0.09 * v, filt('lowpass', f * 6, 2, o, f * 1.2, 0.2, t))],          // Acid
+    ['flute', 72, 93, 1, 0, (f, t, v, o, d) => { osc('sine', f, t, 0.06, d * 0.7, 0.4, 0.08 * v, o, { vib: [5, 9] }); osc('triangle', f, t, 0.06, d * 0.7, 0.4, 0.015 * v, o);   // Rose
+        noise(t, 0.12, 0.012 * v, 'bandpass', f * 2, f * 1.5, 2, o); }],
+    ['harp', 55, 84, 0, 0, (f, t, v, o) => osc('triangle', f, t, 0.003, 0, 1.6, 0.14 * v, filt('lowpass', f * 7, 1, o, f * 2, 0.5, t))],                 // Teal
+    ['marimba', 55, 84, 0, 0, (f, t, v, o) => { osc('sine', f, t, 0.003, 0, 0.55, 0.16 * v, o); osc('sine', f * 3.99, t, 0.002, 0, 0.07, 0.04 * v, o); }],  // Tangerine
+    ['celesta', 72, 96, 0, 0, (f, t, v, o) => { osc('sine', f, t, 0.002, 0, 0.8, 0.08 * v, o); osc('sine', f * 3, t, 0.002, 0, 0.3, 0.025 * v, o); }],  // Lemon
+    ['vibraphone', 60, 88, 0, 0, (f, t, v, o) => { const tr = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain();                           // Sky
+        tr.gain.value = 0.75; l.frequency.value = 5.2; lg.gain.value = 0.25; l.connect(lg); lg.connect(tr.gain); l.start(t); l.stop(t + 2.4); tr.connect(o);
+        osc('sine', f, t, 0.003, 0, 2.2, 0.11 * v, tr); osc('sine', f * 4, t, 0.002, 0, 0.15, 0.02 * v, tr); }],
+    ['bassoon', 43, 62, 0, 0, (f, t, v, o, d) => osc('sawtooth', f, t, 0.06, d * 0.6, 0.35, 0.07 * v, filt('lowpass', 650, 2.2, o))],                   // Plum
+    ['kalimba', 60, 84, 0, 0, (f, t, v, o) => { osc('sine', f, t, 0.002, 0, 0.6, 0.12 * v, o); osc('sine', f * 5.4, t, 0.001, 0, 0.06, 0.03 * v, o); }],   // Moss
+    ['double bass', 33, 48, 0, 1, (f, t, v, o) => { const lp = filt('lowpass', 700, 1, o, 250, 0.6, t);                                                  // Oxblood
+        osc('triangle', f, t, 0.006, 0, 1.3, 0.2 * v, lp); osc('sine', f, t, 0.006, 0, 1.3, 0.12 * v, lp); }],
+    ['organ', 45, 69, 1, 0, (f, t, v, o, d) => { osc('sine', f, t, 0.04, d, 0.3, 0.05 * v, o); osc('sine', f * 2, t, 0.04, d, 0.3, 0.025 * v, o); osc('sine', f * 3, t, 0.04, d, 0.3, 0.014 * v, o); }],   // Navy
+    ['oboe', 64, 84, 0, 0, (f, t, v, o, d) => osc('sawtooth', f, t, 0.05, d * 0.6, 0.3, 0.06 * v, filt('bandpass', 1400, 1.4, filt('lowpass', 3000, 0.7, o)), { vib: [5.5, 9] })],   // Coral
+    ['music box', 79, 100, 0, 0, (f, t, v, o) => { osc('sine', f, t, 0.001, 0, 0.5, 0.06 * v, o); osc('sine', f * 2, t, 0.001, 0, 0.2, 0.02 * v, o); }],   // Lilac
+    ['electric piano', 52, 79, 0, 0, (f, t, v, o) => fm(f, 1, 2.2, t, 1.4, 0.11 * v, o, 0.8)],                                                          // Mint
+    ['trumpet', 60, 80, 0, 0, (f, t, v, o, d) => saws(f, t, 0.04, d * 0.5, 0.35, 0.035 * v, filt('lowpass', 900, 1, o, 2600, 0.12, t), 3, [6, 7])],     // Gold
+    ['piano', 48, 84, 0, 0, (f, t, v, o) => { osc('triangle', f, t, 0.003, 0, 1.8, 0.11 * v, o); osc('sine', f * 2, t, 0.003, 0, 0.9, 0.04 * v, o); osc('sine', f * 3.01, t, 0.002, 0, 0.4, 0.015 * v, o); }],   // Graphite
+    ['bell', 67, 91, 0, 0, (f, t, v, o) => fm(f, 3.5, 3, t, 2.6, 0.06 * v, o, 2)],                                                                      // Pearl
+    ['viola', 60, 79, 1, 0, (f, t, v, o, d) => saws(f, t, 0.3, d, 1.1, 0.04 * v, filt('lowpass', 1900, 0.7, o), 9, [5, 10])],                        // Magenta
+    ['timpani', 38, 55, 0, 1, (f, t, v, o) => { osc('sine', f, t, 0.004, 0, 1.4, 0.24 * v, o, { glide: 0.97 }); noise(t, 0.12, 0.05 * v, 'lowpass', 500, 200, 1, o); }],   // Rust
+  ].map(([name, lo, hi, held, bass, play]) => ({ name, lo, hi, held: !!held, bass: !!bass, play }));
+  // the orchestra's sections, and how much of the room each should be
+  const SECTION = { 'double bass': 'foundation', timpani: 'foundation', cello: 'foundation', bassoon: 'foundation', organ: 'foundation',
+    viola: 'harmony', horn: 'harmony', choir: 'harmony', clarinet: 'harmony',
+    violin: 'melody', flute: 'melody', oboe: 'melody', trumpet: 'melody',
+    harp: 'colour', pizzicato: 'colour', marimba: 'colour', celesta: 'colour', vibraphone: 'colour', glockenspiel: 'colour',
+    kalimba: 'colour', 'music box': 'colour', 'electric piano': 'colour', piano: 'colour', bell: 'colour' };
+  const SHARE = { foundation: 0.2, harmony: 0.25, melody: 0.2, colour: 0.35 };
+  INST.forEach(x => { x.sec = SECTION[x.name]; });
+  const instOf = pl => INST[pl.inst] || INST[0];
+  function pickInst() {                                         // deal the next seat: the section furthest below its share,
+    const room = [ME, ...PEOPLE].filter(p => Number.isInteger(p.inst)), n = room.length + 1;   // then its least-used instrument
+    const have = { foundation: 0, harmony: 0, melody: 0, colour: 0 }, used = {};
+    for (const p of room) { have[INST[p.inst].sec]++; used[p.inst] = (used[p.inst] || 0) + 1; }
+    const need = Object.keys(SHARE).map(k => [k, SHARE[k] * n - have[k] + Math.random() * 0.01]).sort((a, b) => b[1] - a[1])[0][0];
+    const pool = INST.map((x, i) => i).filter(i => INST[i].sec === need), least = Math.min(...pool.map(i => used[i] || 0));
+    const free = pool.filter(i => (used[i] || 0) === least);
+    return free[Math.floor(Math.random() * free.length)];
+  }
+
+  function start() {
+    if (!on) return;
+    if (ac) { if (ac.state !== 'running') ac.resume().then(label); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ac = new AC(); ac.onstatechange = label;
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 4; comp.connect(ac.destination);
+    master = ac.createGain(); master.gain.value = 0.9; master.connect(comp);
+    scope = ac.createAnalyser(); scope.fftSize = 2048; master.connect(scope); scopeBuf = new Float32Array(scope.fftSize);   // for the Wave brush
+    dry = ac.createGain(); dry.connect(master);
+    const len = Math.floor(ac.sampleRate * 3.2), ir = ac.createBuffer(2, len, ac.sampleRate);   // the hall: a soft 3 s tail
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.4); }
+    const conv = ac.createConvolver(); conv.buffer = ir; conv.connect(master);
+    wet = ac.createGain(); wet.gain.value = 0.5; wet.connect(conv);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    label();
+  }
+  // how loud one person is: everyone softer as the room fills; you only a touch above anyone else (×1.3)
+  const crowdVel = () => 0.75 / Math.pow(Math.max(1, PEOPLE.length), 0.3);
+  const myVel = () => PEOPLE.length ? Math.min(1, crowdVel() * 1.3) : 1;
+  const ready = () => ac && on && ac.state === 'running' && voices < 90;
+
+  function panOf(pl) {                                          // left/right from where the pen is on screen
+    const P = project(pl === ME ? penSmooth : pl.smooth, innerWidth, innerHeight);
+    return P[2] < NEAR ? 0 : (P[0] / innerWidth * 2 - 1) * 0.7;
+  }
+  function pitchFor(pl, inst, chord) {                          // climb the shape and the notes climb with you
+    if (inst.bass) return snap(inst.lo + (Math.floor(pl.pen.s) % 3) * 7, [chord.root, (chord.root + 7) % 12], inst.lo, inst.hi);   // root and fifth
+    const h = Math.max(0, Math.min(1, (penPos(pl.pen)[1] + 1.2) / 2.4));
+    return snap(inst.lo + h * (inst.hi - inst.lo) + ((Math.floor(pl.pen.s) % 5) - 2) * 2, chord.pcs, inst.lo, inst.hi);
+  }
+  function play(inst, m, t, vel, pan, send, dur) { inst.play(mtof(m), t, vel, out(pan, send), dur); }
+  const brushOf = pl => pl === ME ? brush : pl.brush;
+  function brushLayer(b, m, t, vel, pan, send, pcs) {           // each brush's touch, always on notes of the chord
+    const o = out(pan, send), up = k => mtof(snap(m + k, pcs, m + k - 6, m + k + 6));
+    if (b === 0) osc('sine', up(7), t, 0.06, 0.1, 0.6, 0.03 * vel, o);                                   // Ribbon: a fifth sings along
+    else if (b === 1) osc('sine', up(24), t, 0.001, 0, 0.14, 0.022 * vel, o);                            // Blueprint: a tiny high ping
+    else if (b === 2) { const lp = filt('lowpass', 3200, 0.7, o);                                        // Pixel: two stepped chip notes
+      osc('square', up(12), t, 0.002, 0, 0.06, 0.016 * vel, lp); osc('square', up(19), t + SIXTEENTH / 2, 0.002, 0, 0.06, 0.013 * vel, lp); }
+    else if (b === 3) { noise(t, 0.035, 0.02 * vel, 'bandpass', 5200, 3200, 1.5, o);                    // Notation: a nib scratch
+      osc('triangle', up(5), t + SIXTEENTH / 2, 0.002, 0, 0.12, 0.03 * vel, o); }                         // …and a quick flick up
+    else osc('sine', up(19), t, 0.02, 0.05, 0.35, 0.026 * vel, o);                                       // Wave: a pure sine, a twelfth above
+  }
+
+  // ---- what the page calls ----
+  function knob(i, d, pl = ME) {
+    if (!ready()) return;
+    const now = ac.currentTime, pan = panOf(pl);
+    if (i === 0) {                                              // your instrument, on the room's beat, in the chord of that moment
+      const t = onGrid(0, now); if (t === null) return;
+      const inst = instOf(pl), ch = chordAt(t), m = pitchFor(pl, inst, ch);
+      const v = myVel();
+      play(inst, m, t, v, pan, 0.45, inst.held ? 0.3 : 0.2);
+      brushLayer(brushOf(pl), m, t, v, pan, 0.45, ch.pcs);
+      if (Math.random() < 0.2) bubble(pan, 0.6, 0.3, t - now);
+      return;
+    }
+    if (i === 1) {                                              // the ratchet ticks on the beat too
+      const t = onGrid(1, now); if (t === null) return;
+      const step = ((Math.round(pl.pen.ang / (Math.PI * 2) * 24) % 24) + 24) % 24, detent = step % 6 === 0, o = out(pan, 0.12);
+      noise(t, 0.02, detent ? 0.08 : 0.035, 'bandpass', 2600 + step * 70, 2400, 5, o);
+      osc('sine', detent ? 1760 : 1318.5, t, 0.001, 0, 0.035, detent ? 0.04 : 0.016, o);
+    } else {
+      if (now - lastAt[2] < 0.03) return; lastAt[2] = now;     // a fast spin isn't a breath per click
+      const f = 220 - pl.pen.rad * 250, o = out(pan, 0.35);
+      osc('sine', f * (d > 0 ? 1.12 : 0.9), now, 0.02, 0, 0.3, 0.09, o, { glide: d > 0 ? 1 / 1.12 : 1 / 0.9 });
+      noise(now, 0.25, 0.018, 'lowpass', 900, 250, 0.7, o);
+    }
+  }
+  function crowd(pl) {                                          // everyone else: on the beat, fewer and softer as the room fills
+    if (!ready()) return;
+    const n = Math.max(1, PEOPLE.length), inst = instOf(pl);
+    if (Math.random() > (inst.held ? 0.18 : 0.5) / n) return;
+    let slot = Math.ceil((ac.currentTime + 0.03) / EIGHTH);
+    while ((slots.get(slot) || 0) >= 3 && slot < Math.ceil(ac.currentTime / EIGHTH) + 3) slot++;   // the conductor: 3 notes a beat
+    if ((slots.get(slot) || 0) >= 3) return;
+    slots.set(slot, (slots.get(slot) || 0) + 1);
+    if (slots.size > 64) for (const k of slots.keys()) { if (k < slot - 8) slots.delete(k); }
+    const t = slot * EIGHTH, vel = crowdVel(), ch = chordAt(t), m = pitchFor(pl, inst, ch), pan = panOf(pl);
+    play(inst, m, t, vel, pan, 0.6, inst.held ? 1.2 + Math.random() : 0.4);
+    if (Math.random() < 0.5) brushLayer(pl.brush, m, t, vel * 0.8, pan, 0.6, ch.pcs);   // their brush, softer and not every time
+  }
+  function bubble(pan, vel = 1, send = 0.3, at = 0) {           // a bubble: a sine that rises fast
+    const t = ac.currentTime + at + Math.random() * 0.03, f = 380 + Math.random() * 700;
+    osc('sine', f, t, 0.004, 0, 0.07, 0.07 * vel, out(pan, send), { glide: 2.2 + Math.random() });
+  }
+  function arpeggio(inst, degrees, gap, vel, send, pan = 0) {   // chord tones, climbing, on your instrument
+    const now = ac.currentTime, ch = chordAt(now);
+    let m = inst.lo + Math.round((inst.hi - inst.lo) * 0.3);
+    degrees.forEach((k, j) => { m = snap(m + k, ch.pcs, inst.lo, inst.hi + 12); play(inst, m, now + j * gap, vel, pan + (j - degrees.length / 2) * 0.08, send, inst.held ? 0.5 : 0.3); m++; });
+  }
+  function orbit(i, d) {                                        // looking around: a soft air movement
+    if (!ready()) return;
+    const now = ac.currentTime; if (now - lastAt[i] < 0.05) return; lastAt[i] = now;
+    noise(now, 0.18, 0.022, 'bandpass', d > 0 ? 700 : 1400, d > 0 ? 1400 : 700, 1.2, out(d > 0 ? 0.3 : -0.3, 0.4));
+  }
+  function hop() {                                              // a glide… landing on a note of your instrument
+    if (!ready()) return;
+    const t = ac.currentTime, o = out(panOf(ME), 0.6), inst = instOf(ME);
+    osc('sine', 220, t, 0.02, 0, 0.3, 0.07, o, { glide: 3 });
+    noise(t, 0.3, 0.035, 'bandpass', 600, 4200, 1.2, o);
+    play(inst, snap(inst.hi - 4, chordAt(t).pcs, inst.lo, inst.hi), t + 0.22, 0.8, panOf(ME), 0.6, 0.4);
+  }
+  function brushChange() {                                      // a new brush: a phrase in its touch
+    if (!ready()) return;
+    const inst = instOf(ME), now = ac.currentTime, ch = chordAt(now);
+    let m = snap(inst.lo + (inst.hi - inst.lo) * 0.5, ch.pcs, inst.lo, inst.hi);
+    for (let j = 0; j < 3; j++) { play(inst, m, now + j * 0.11, 0.6, 0, 0.5, 0.2); brushLayer(brush, m, now + j * 0.11, 1, 0, 0.5, ch.pcs); m = snap(m + 3, ch.pcs, inst.lo, inst.hi + 12); }
+  }
+  function pick(i) {                                            // browsing colours: a drop of liquid for each
+    if (!ready()) return;
+    const now = ac.currentTime; if (now - lastAt[0] < 0.06) return; lastAt[0] = now;
+    bubble((i % 8 - 3.5) * 0.12, 0.7, 0.35);
+  }
+  function join() { if (ready()) { arpeggio(instOf(ME), [0, 2, 3, 3, 4], 0.12, 0.8, 0.6);
+    for (let k = 0; k < 6; k++) bubble((Math.random() - 0.5) * 0.6, 0.5, 0.4, 0.5 + k * 0.07); } }
+  function clear() {                                            // everything drains away
+    if (!ready()) return;
+    const t = ac.currentTime, o = out(0, 0.5);
+    noise(t, 1.3, 0.06, 'lowpass', 3200, 180, 1.5, o);
+    osc('sine', 880, t, 0.02, 0, 0.9, 0.05, o, { glide: 0.25 });
+    for (let k = 0; k < 8; k++) bubble((Math.random() - 0.5) * 0.8, 0.7 - k * 0.06, 0.4, k * 0.1);
+  }
+  function mode(m) { if (ready()) arpeggio(instOf(ME), m === 'orbit' ? [0, 2] : [2, -4], 0.09, 0.6, 0.4); }
+  function arrive(pl) {                                         // someone joins: their instrument, far off, on the beat
+    if (!ready()) return;
+    const inst = instOf(pl), t = Math.ceil((ac.currentTime + 0.03) / EIGHTH) * EIGHTH;
+    play(inst, snap((inst.lo + inst.hi) / 2, chordAt(t).pcs, inst.lo, inst.hi), t, 0.5, (Math.random() - 0.5) * 1.4, 0.9, 0.8);
+  }
+  function toggle() {
+    on = !on; try { localStorage.setItem('etch-sound', on ? 'on' : 'off'); } catch (e) {}
+    if (on) start();
+    if (master) master.gain.setTargetAtTime(on ? 0.9 : 0, ac.currentTime, 0.05);
+    label();
+  }
+  const el = () => document.getElementById('sound');
+  function label() {
+    const e = el(); if (!e) return;
+    e.textContent = !on ? 'sound off · M' : ac && ac.state === 'running' ? 'sound on · M' : 'click for sound';
+    e.classList.toggle('off', !on || !ac || ac.state !== 'running');
+  }
+  // the first click or key press anywhere switches sound on; clicking the label toggles it after that
+  for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => {
+    if (on && (!ac || ac.state !== 'running')) { start(); justStarted = true; setTimeout(() => { justStarted = false; }, 400); }
+  }, true);
+  function labelClick() { if (justStarted) return; toggle(); }
+  const instName = i => INST[i] ? INST[i].name : '';
+  // The Wave brush reads the sound. Silence is exactly 0 (a noise gate), and a curve lifts quiet sounds so soft
+  // notes still show. Points aren't measured the instant they're drawn — your note plays a moment later, on the
+  // beat — so each point waits ~¼ s and keeps the loudest moment in that window (stamp()).
+  let scope = null, scopeBuf = null, levelVal = 0, waveAt = 0;
+  const hist = [], pending = [];
+  function sample() {
+    if (!scope || !on || ac.state !== 'running') return 0;
+    scope.getFloatTimeDomainData(scopeBuf); let s = 0; for (const v of scopeBuf) s += v * v;
+    const rms = Math.sqrt(s / scopeBuf.length);
+    return rms < 0.0025 ? 0 : Math.min(1, Math.pow(rms * 14, 0.6));
+  }
+  setInterval(() => {                                            // ~30 times a second: listen, then settle waiting points
+    const now = performance.now(); levelVal = sample(); hist.push([now, levelVal]);
+    while (hist.length && now - hist[0][0] > 3000) hist.shift();
+    while (pending.length && now - pending[0][1] > 280) {
+      const [p, tc] = pending.shift(); let m = 0;
+      for (const [ht, hv] of hist) if (ht >= tc - 40 && ht <= tc + 280 && hv > m) m = hv;
+      p[3] = m;
+    }
+  }, 30);
+  function stamp(p) { p[3] = 0; pending.push([p, performance.now()]); if (pending.length > 4000) pending.splice(0, pending.length - 4000); return p; }
+  const level = () => levelVal;
+  function wave() {
+    if (!scope || !on || ac.state !== 'running') return null;
+    const now = performance.now(); if (now - waveAt > 25) { waveAt = now; scope.getFloatTimeDomainData(scopeBuf); }
+    return scopeBuf;
+  }
+  return { level, wave, stamp, knob, orbit, hop, brushChange, pick, join, clear, mode, arrive, crowd, toggle, label, labelClick, instName, instOf, pickInst };
+})();
+
+// ================= multiplayer (the class spec) =================
+// The boilerplate below is the spec's, filled in where it says FILL IN. What goes over the wire, ~20 times a
+// second: your pen on the frame, your brush, how much you've poured since the last update, and a stroke
+// number that ticks when you hop (so everyone else starts a new line there too). Clearing stays local.
+const NET = { pour: 0, stroke: 0 };
+let camera = null;                                            // a THREE camera kept in step with ours, for positionFlag()
+function syncCamera(w, h) {
+  if (!window.THREE) return false;
+  if (!camera) camera = new THREE.PerspectiveCamera(60, w / h, NEAR, 100);
+  camera.aspect = w / h; camera.fov = 2 * Math.atan(h / 2 / CAM.f) * 180 / Math.PI; camera.updateProjectionMatrix();
+  const R = CAM.R, U = CAM.U, F = CAM.F, P = CAM.pos;
+  camera.matrixWorld.set(R[0], U[0], -F[0], P[0], R[1], U[1], -F[1], P[1], R[2], U[2], -F[2], P[2], 0, 0, 0, 1);
+  camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+  return true;
+}
+// Everyone has a name tag on a stem above their dot: the spec's makeFlag/positionFlag, for real players,
+// simulated ones and you. Yours is bigger and says "You" (or your name in a class session).
+let meTag = null;
+const rgbHex = c => '#' + c.map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+function tagColour(flag, rgb) {                               // background = their liquid; ink or white text, whichever reads
+  const key = rgb.join(); if (flag._c === key) return; flag._c = key;
+  const lab = flag.firstChild; lab.style.background = rgbHex(rgb);
+  lab.style.color = 0.3 * rgb[0] + 0.59 * rgb[1] + 0.11 * rgb[2] > 0.6 ? '#141414' : '#fff';
+}
+function placeFlags(w, h) {
+  const hideAll = JOIN.open;                                  // choosing a colour: no tags over the picker
+  if (!meTag) { meTag = myFlag || makeFlag('You', rgbHex(ME.color)); meTag.classList.add('me'); }
+  if (!syncCamera(w, h) || hideAll) {
+    for (const f of document.querySelectorAll('.name-flag')) f.style.display = 'none';
+    return;
+  }
+  tagColour(meTag, ME.color); positionFlag(meTag, new THREE.Vector3(...penSmooth));
+  for (const pl of PEOPLE) {
+    if (!pl.flag) pl.flag = makeFlag(pl.name, rgbHex(pl.color));
+    if (pl.remote && !pl.seen) { pl.flag.style.display = 'none'; continue; }
+    tagColour(pl.flag, pl.color);
+    positionFlag(pl.flag, new THREE.Vector3(...pl.smooth));
+    const P = project(pl.smooth, w, h);
+    pl.flag.classList.toggle('far', P[2] >= NEAR && layerOf(P[2]) === 2);   // far away: a smaller, fainter tag
+  }
+}
+const hexToRGB = h => { const n = parseInt(String(h).replace('#', ''), 16) || 0; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+const nearestLiquid = c => LIQ_COLORS.reduce((best, L) => {
+  const d = (L.rgb[0] - c[0]) ** 2 + (L.rgb[1] - c[1]) ** 2 + (L.rgb[2] - c[2]) ** 2;
+  return d < best.d ? { d, c: L } : best; }, { d: Infinity, c: LIQ_COLORS[0] }).c;
+function addRemotePerson(name, colorHex) {                    // like a simulated person, but moved by the network
+  const rgb = hexToRGB(colorHex);
+  const pl = { name, remote: true, seen: false, stroke: 0, color: rgb, colorName: nearestLiquid(rgb).name, brush: 0,
+    pen: { a: 0, b: 1, s: 0, ang: 0, rad: 0.075 }, visits: {}, strokes: [], trail: [], cur: null, smooth: [0, 0, 0] };
+  PEOPLE.push(pl); renderPeople();
+  return pl;
+}
+function applyRemote(pl, d) {                                 // their update -> their pen, line and liquid (never trusted blindly)
+  const p = d.pen; if (!p || typeof p !== 'object') return;
+  const num = (v, lo, hi, def) => Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : def;
+  const a = num(p.a, 0, 23, 0) | 0, b = num(p.b, 0, 23, 1) | 0;
+  if (a === b || a >> 2 !== b >> 2) return;                  // pens only ever sit on a frame's side
+  pl.pen = { a, b, s: num(p.s, 0, CELLS, 0), ang: num(p.ang, -1e5, 1e5, 0), rad: num(p.rad, 0, 0.6, 0.075) };
+  pl.brush = num(d.brush, 0, BRUSHES.length - 1, 0) | 0;
+  pl.inst = num(d.inst, 0, 23, 0) | 0;                       // the instrument they were dealt
+  if (Array.isArray(d.color) && d.color.length === 3) {      // their colour, if they changed it
+    const c = d.color.map(v => num(v, 0, 255, 0) / 255);
+    if (c.some((v, k) => Math.abs(v - pl.color[k]) > 0.01)) { pl.color = c; pl.colorName = nearestLiquid(c).name; renderPeople(); }
+  }
+  const pos = SND.stamp(penPos(pl.pen)), stroke = num(d.stroke, 0, 1e9, 0) | 0;
+  if (!pl.seen || stroke !== pl.stroke) {                     // first update, or they hopped: a new line starts here
+    if (pl.trail.length > 1) pl.strokes.push(pl.trail);
+    pl.trail = [pos]; if (!pl.seen) pl.smooth = [...pos];
+    pl.seen = true; pl.stroke = stroke; renderPeople();
+  } else {
+    const last = pl.trail[pl.trail.length - 1];
+    if (!last || Math.hypot(pos[0] - last[0], pos[1] - last[1], pos[2] - last[2]) > 1e-4) { pl.trail.push(pos); SND.crowd(pl); }
+  }
+  pl.cur = pos;
+  const amt = num(d.pour, 0, 20, 0); if (amt > 0) pour(amt, pl);
+}
+function netSend() {                                          // called every frame; sendUpdate() rate-limits itself
+  if (!ws) return;
+  const before = lastSend, P = PEN, r3 = v => Math.round(v * 1000) / 1000;
+  sendUpdate({ name: myName, pen: { a: P.a, b: P.b, s: r3(P.s), ang: r3(P.ang), rad: r3(P.rad) }, brush, inst: ME.inst ?? 0, color: ME.color.map(v => Math.round(v * 255)), stroke: NET.stroke, pour: r3(NET.pour) });
+  if (lastSend !== before) NET.pour = 0;                      // it went out: start counting again
+}
+
+// ── FILL IN: your message type, prefixed with your name ───────────────
+const MY_MSG_TYPE = 'robert-move';
+
+// ── Color swatches ──────────────────────────────────────────────────
+const MP_COLORS = ['#4A90D9','#fb5579','#2E8B57','#9B59B6','#E07840','#8B7EB8','#3CB371','#C8B820'];
+let myColor = MP_COLORS[0];
+// ── Notification toast ───────────────────────────────────────────────
+let notifTimer;
+function notify(msg) {
+  const el = document.getElementById('notif');
+  el.textContent = msg; el.className = 'show';
+  clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => { el.className = ''; }, 2500);
+}
+
+// ── Name flags ───────────────────────────────────────────────────────
+// Builds the flag as DOM nodes (not innerHTML) so a player's name can
+// never be interpreted as markup. Do not change this to string-concat HTML.
+function makeFlag(name, colorHex) {
+  const d = document.createElement('div');
+  d.className = 'name-flag';
+  const label = document.createElement('div');
+  label.className = 'label';
+  label.style.background = colorHex;
+  label.textContent = name;
+  d.appendChild(label);
+  document.body.appendChild(d);
+  return d;
+}
+function positionFlag(flag, worldPos) {
+  // worldPos is a THREE.Vector3 in world space.
+  // Requires a `camera` variable to exist in scope — make sure your
+  // THREE.PerspectiveCamera is assigned to a variable literally named `camera`.
+  const v = worldPos.clone().project(camera);
+  if (v.z > 1) { flag.style.display = 'none'; return; }
+  flag.style.display = '';
+  flag.style.left = ((v.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+  flag.style.top  = ((-v.y * 0.5 + 0.5) * window.innerHeight - 20) + 'px';
+}
+
+// ── Remote player registry ───────────────────────────────────────────
+const remotes = {};  // name → { flag, ...your per-player state }
+
+function addRemote(name, colorHex) {
+  if (remotes[name]) return;
+  const flag = makeFlag(name, colorHex);
+
+  // a person in the room: drawn and poured like everyone else, moved only by their updates
+  flag.style.display = 'none';                               // until their first update says where they are
+  const person = addRemotePerson(name, colorHex);
+  person.flag = flag;
+
+  remotes[name] = {
+    flag,
+    color: new THREE.Color(colorHex),
+    person,
+  };
+}
+
+function removeRemote(name) {
+  const r = remotes[name];
+  if (!r) return;
+  r.flag.remove();
+
+  const i = PEOPLE.indexOf(r.person); if (i >= 0) PEOPLE.splice(i, 1);
+  renderPeople();
+
+  delete remotes[name];
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────
+let ws = null;
+let myName = '';
+let myFlag = null;
+let bonusMode = false; // set from the instructor's optional broadcast — see note above
+let lastSend = 0;
+
+function connectToServer(url, name, colorHex) {
+  myName = name;
+  myFlag = makeFlag(name, colorHex);
+
+  ME.name = name; ME.color = hexToRGB(colorHex); ME.colorName = nearestLiquid(ME.color).name;
+  if (meTag && meTag !== myFlag) meTag.remove(); meTag = myFlag; myFlag.classList.add('me');   // one tag on you, now with your name
+  renderPeople(); SND.join();
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    ws._ok = true;
+    ws.send(JSON.stringify({ type: 'join', name, color: colorHex }));
+    notify(name + ' joined');
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+
+      if (d.type === 'players') {
+        d.players.forEach(p => { if (p.name !== myName) addRemote(p.name, p.color); });
+      }
+      if (d.type === 'join' && d.name !== myName) {
+        addRemote(d.name, d.color);
+        notify(d.name + ' joined');
+      }
+      if (d.type === 'leave') {
+        removeRemote(d.name);
+        notify(d.name + ' left');
+      }
+      if (d.type === 'mode') {
+        bonusMode = d.bonus; // optional — most sketches never read this
+      }
+      if (d.type === 'reset') {
+        clearDrawing();
+        Object.values(remotes).forEach(r => {
+          const pl = r.person; pl.strokes = []; pl.trail = pl.cur ? [[...pl.cur]] : [];
+        });
+      }
+      if (d.type === 'kicked') {
+        ws._ok = false; ws.close();
+        notify('Removed from session');
+
+      }
+      if (d.type === 'join-rejected') {
+        notify(d.reason || 'Cannot join');
+      }
+
+      if (d.type === MY_MSG_TYPE && d.name !== myName) {
+        const r = remotes[d.name];
+        if (r) {
+          applyRemote(r.person, d);
+          positionFlag(r.flag, new THREE.Vector3(...r.person.smooth));
+        }
+      }
+
+    } catch(err) { console.error(err); }
+  };
+
+  ws.onclose = () => {
+    if (!ws._ok) return;
+    notify('Disconnected');
+  };
+}
+
+// ── Send state update (call this from your render loop) ──────────────
+// Rate-limited to ~20fps internally. Call every frame.
+function sendUpdate(stateData) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const now = performance.now();
+  if (now - lastSend < 50) return;
+  lastSend = now;
+  ws.send(JSON.stringify({ type: MY_MSG_TYPE, ...stateData }));
+  // Update own flag — pass the world position of your character
+  if (myFlag) positionFlag(myFlag, new THREE.Vector3(...penSmooth));
+}
+
+// ── ENTRY SCREEN: joining a class session ────────────────────────────
+// No typed login: the name and server come from the page address, and the colour from the entry screen —
+//   wire.html?server=wss://the-ngrok-url&name=Robert
+// confirmColor() connects once a colour is chosen. With no server in the address the sketch runs solo.
+const JOIN_URL = (() => {
+  const q = new URLSearchParams(location.search);
+  return { server: (q.get('server') || '').trim(), name: (q.get('name') || '').trim().slice(0, 20) };
+})();
+if (JOIN_URL.name) document.getElementById('joinwho').textContent = JOIN_URL.name + (JOIN_URL.server ? ' · joining the class' : '');
+
+// ---- input (keyboard and encoders share this) ----
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const knob = [0, 0, 0];                                   // every click, either mode: drives the round knob screen
+// "Forward" along a tube is fixed in the shape, so on screen it can point left — and right would move you left.
+// Instead, right / clockwise moves the pen towards the right of the screen (or up, on a tube that runs up and down).
+// The direction is held while you keep turning, so rounding a corner never flips you back; it's re-read after a pause.
+const ALONG = { sign: 1, at: -1e9 };
+function alongSign() {
+  const now = performance.now();
+  if (now - ALONG.at > 500) {
+    const w = innerWidth, h = innerHeight, A = penPos(PEN), t = v3.norm(v3.sub(FV[PEN.b], FV[PEN.a]));
+    const P = project(A, w, h), Q = project(v3.add(A, v3.mul(t, 0.03)), w, h);
+    if (P[2] >= NEAR && Q[2] >= NEAR) {
+      const dx = Q[0] - P[0], dy = Q[1] - P[1];
+      ALONG.sign = Math.abs(dx) >= Math.abs(dy) * 0.5 ? (dx >= 0 ? 1 : -1) : (dy <= 0 ? 1 : -1);
+    }
+  }
+  ALONG.at = now;
+  return ALONG.sign;
+}
+function turn(i, d, how = S.mode) {                          // how: 'draw' or 'orbit' (keyboard arrows always draw)
+  knob[i] += d; lastInputAt = performance.now();
+  if (JOIN.open) { JOIN.i = (JOIN.i + d + LIQ_COLORS.length * 99) % LIQ_COLORS.length; renderPicker(); SND.pick(JOIN.i); return; }   // choosing your colour: any knob browses
+  if (MENU.open) { menuMove(d); return; }                  // the menu: any knob moves the highlight
+  ripples.push({ age: 0, c: palAt(Math.random()) });
+  if (how === 'draw') {
+    if (i === 0) d *= alongSign();                           // right / clockwise = towards the right of the screen
+    movePen(ME, i, d); S.ver++; SND.knob(i, d, ME);           // knob 1 = along the tube (one cell per click), knob 2 = around it, knob 3 = out from it
+  } else if (SND.orbit(i, d), i === 0) S.yaw += d*0.08;
+  else if (i === 1) S.pitch = clamp(S.pitch + d*0.08, -1.5, 1.5);   // clamp pitch: no gimbal flip
+  else S.zoom = clamp(S.zoom + d*0.05, 0.35, 2.5);                 // closer or further from the pen
+  S.dirty = true;
+}
+function toggleMode() {                                    // the controller: press knob 3 to switch
+  S.mode = S.mode === 'draw' ? 'orbit' : 'draw';
+  showMode(); SND.mode(S.mode);
+}
+function showMode() {
+  const orbiting = S.mode === 'orbit' || (typeof pressedKeys !== 'undefined' && pressedKeys[' '] !== undefined);
+  document.getElementById('mode').textContent = orbiting ? 'Orbit' : 'Draw';
+}
+function orbitKeys(dt) {                                    // Space held + arrows: orbit around the pen, every frame
+  if (pressedKeys[' '] === undefined) return;
+  const sp = 1.6 * dt, L = pressedKeys['ArrowLeft'], R = pressedKeys['ArrowRight'], U = pressedKeys['ArrowUp'], D = pressedKeys['ArrowDown'];
+  if (!(L || R || U || D)) return;
+  if (L) S.yaw -= sp; if (R) S.yaw += sp;
+  if (U) S.pitch = clamp(S.pitch + sp, -1.5, 1.5); if (D) S.pitch = clamp(S.pitch - sp, -1.5, 1.5);   // clamped: no gimbal flip
+  lastInputAt = performance.now();
+}
+function setBrush(i) {                                      // multiplayer: each player gets the next brush
+  brush = ((i % BRUSHES.length) + BRUSHES.length) % BRUSHES.length;
+  const el = document.getElementById('brushbig');
+  el.textContent = BRUSHES[brush].name; el.classList.add('shift'); setTimeout(() => el.classList.remove('shift'), 600);
+  document.getElementById('brushidx').innerHTML = `${String(brush + 1).padStart(2, '0')} / ${String(BRUSHES.length).padStart(2, '0')}<span class="rule"></span>brush`;
+  document.getElementById('dots').innerHTML = BRUSHES.map((_, j) => `<i class="${j === brush ? 'on' : ''}"></i>`).join('');
+  if (typeof renderPeople === 'function' && document.getElementById('people')) renderPeople();
+  if (typeof SND !== 'undefined') SND.brushChange(brush);
+}
+function clearDrawing() {                                   // start over from where the pen is
+  S.trail = [[...S.cur]]; S.strokes = []; ME.thinAt = 0; S.ver++; resetVisits(); LIQ.draining = true;
+  for (let i = 0; i < 3; i++) ripples.push({ age: -i * 0.12, c: INK });
+  SND.clear();
+}
+// Keys follow the class contract: arrows alone draw; Space held + arrows orbits; Shift jumps to the closest line (always);
+// C clears your own drawing, locally only. Typing in the login boxes never triggers any of it.
+const pressedKeys = {};
+addEventListener('keyup', e => { delete pressedKeys[e.key]; if (e.key === ' ') showMode(); });
+addEventListener('blur', () => { for (const k in pressedKeys) delete pressedKeys[k]; showMode(); });
+addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, textarea')) return;
+  if (KNOBS.setup) { if (e.key === 'Escape' || e.key.toLowerCase() === 'k') knobSetup(false); return; }
+  if (MENU.open && e.key === 'Escape') { menuShow(false); return; }
+  if (JOIN.open) {                                         // entry screen: arrows browse, Enter / Space goes in
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { turn(0, 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { turn(0, -1); e.preventDefault(); }
+    else if (e.key === 'Enter' || e.key === ' ') { confirmColor(); e.preventDefault(); }
+    else if (e.key.toLowerCase() === 'm') SND.labelClick();
+    return;
+  }
+  pressedKeys[e.key] = true;
+  if (!(e.key.startsWith('Arrow') || e.key === '[' || e.key === ']' || e.key === ' ' || e.key === 'Shift')) showUI();   // drawing keys don't
+  if (e.key === ' ') { e.preventDefault(); showMode(); return; }            // hold Space: arrows orbit (see orbitKeys)
+  if (e.key === 'Shift') { if (!e.repeat) { lastInputAt = performance.now(); hop(); } return; }   // Shift: jump to the closest line
+  if (e.key.startsWith('Arrow')) {
+    e.preventDefault();
+    if (pressedKeys[' '] !== undefined) return;                              // orbiting, not drawing
+    if (e.key === 'ArrowRight') turn(0, 1, 'draw');
+    else if (e.key === 'ArrowLeft') turn(0, -1, 'draw');
+    else if (e.key === 'ArrowUp') turn(1, 1, 'draw');
+    else turn(1, -1, 'draw');
+    return;
+  }
+  const k = e.key.toLowerCase();
+  if (k === 'm') SND.labelClick();                                         // M: sound on / off
+  else if (k === 'p') addPerson();                                         // P: a simulated person comes in
+  else if (e.key === ']') turn(2, 1, 'draw');
+  else if (e.key === '[') turn(2, -1, 'draw');
+  else if (k === 'c') clearDrawing();
+  else if (k === 'l') changeColor();                                      // L: change your liquid colour
+  else if (k === 'i') newInstrument();                                    // I: deal yourself a new instrument
+  else if (k === 'k') knobSetup(!KNOBS.setup);                            // K: set up the knobs for any wiring
+  else if (k === 'b') setBrush(brush + 1);
+  else if (e.key >= '1' && e.key <= '5') setBrush(+e.key - 1);          // 1–5: Ribbon, Blueprint, Pixel, Notation, Wave
+});
+
+// ---- Web Serial (Chrome / Edge) ----
+let port, writer;
+const status = document.getElementById('status');
+
+async function connect() {
+  if (!('serial' in navigator)) { status.textContent = 'Use Chrome or Edge (Web Serial)'; return; }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    await port.setSignals({ dataTerminalReady: true });
+    writer = port.writable.getWriter();
+    status.textContent = 'Connected';
+    document.getElementById('connect').style.display = 'none';
+    S.dirty = true;
+    readLoop();
+  } catch (err) { status.textContent = 'Could not connect: ' + err.message; }
+}
+document.getElementById('connect').onclick = connect;
+
+// The three knob presses, like the keyboard: knob 1 = Shift (jump), knob 2 = Space (draw / orbit), knob 3 = Enter
+// (confirm, on menus). Holds: knob 1 held = next brush, knob 2 held ~1 s = clear.
+let knob1Down = 0, knob2Down = 0, knob2Timer = null;
+function knob1Up() {                                         // knob 1 released: a click jumps to the closest line, a hold changes brush
+  if (!knob1Down) return;
+  const held = performance.now() - knob1Down; knob1Down = 0;
+  if (held > 500) setBrush(brush + 1);
+  else { lastInputAt = performance.now(); hop(); }
+}
+function knob2Press() {                                      // knob 2 pressed: held for a second it clears; otherwise it switches on release
+  knob2Down = performance.now(); clearTimeout(knob2Timer);
+  knob2Timer = setTimeout(() => { if (knob2Down) { knob2Down = 0; clearDrawing(); toast('<b>Cleared</b>', 1600); } }, 1000);
+}
+function knob2Up() {
+  clearTimeout(knob2Timer);
+  if (!knob2Down) return;                                    // the hold already cleared
+  knob2Down = 0; toggleMode();
+}
+// The extra button (P3) is the controller's menu key. On "Choose your liquid" it confirms. While playing it opens the
+// menu on the corner panel: turn any knob to move between the options, press any knob to pick one, and press the
+// button again to close it. Picking "Change colour" opens the colour screen, where a knob turn browses and a press confirms.
+const MENU = { open: false, i: 0, items: [
+  ['newcolor', () => changeColor()], ['newinst', () => newInstrument()], ['setknobs', () => knobSetup(true)], ['knobspeed', () => cycleSpeed()], ['sound', () => SND.labelClick()],
+] };
+function menuShow(open) {
+  MENU.open = open;
+  MENU.items.forEach(([id], k) => document.getElementById(id).classList.toggle('menufocus', open && k === MENU.i));
+  document.getElementById('menuhint').classList.toggle('on', open);
+  document.querySelector('.corner').classList.toggle('menuopen', open);
+}
+function menuMove(d) { const n = MENU.items.length; MENU.i = ((MENU.i + Math.sign(d)) % n + n) % n; menuShow(true); SND.pick(MENU.i * 5); }
+function menuSelect() { const [, fn] = MENU.items[MENU.i]; const stay = ['sound', 'knobspeed'].includes(MENU.items[MENU.i][0]); if (!stay) menuShow(false); fn(); if (stay) menuShow(true); }
+// The switch (S3) reports its position. One flip — up or down — confirms on "Choose your liquid". While playing,
+// a toggle switch's position is the menu: on = open, off = closed. A push button (on for only a moment) instead
+// opens / closes the menu with each press. Which kind it is is learned the first time: still on after 1.2 s = a switch.
+const SW = { on: false, onAt: 0, timer: null, type: null };
+try { SW.type = localStorage.getItem('etch-switch'); } catch (e) {}
+function setSwitchType(t) { if (SW.type === t) return; SW.type = t; try { localStorage.setItem('etch-switch', t); } catch (e) {} }
+function switchChange(on) {
+  const was = SW.on; SW.on = on; if (was === on) return;
+  showUI();
+  if (on) { SW.onAt = performance.now(); clearTimeout(SW.timer); SW.timer = setTimeout(() => { if (SW.on) setSwitchType('switch'); }, 1200); }
+  else if (!SW.type && performance.now() - SW.onAt < 1200) setSwitchType('button');   // only learned once: a quick flip doesn't make a switch a button
+  if (KNOBS.setup) { if (on || SW.type === 'switch') knobSetup(false); return; }   // cancels knob setup
+  if (JOIN.open) { confirmColor(); return; }                                       // one flip, either way: confirm
+  if (SW.type === 'switch') menuShow(on);                                          // a switch: its position is the menu
+  else if (on) { menuShow(!MENU.open); if (MENU.open) SND.pick(MENU.i * 5); }      // a button: each press opens / closes
+}
+function buttonPress() {
+  if (KNOBS.setup) { knobSetup(false); return; }            // in knob setup: the button cancels it
+  if (JOIN.open) { confirmColor(); return; }                // choosing your liquid: confirm
+  menuShow(!MENU.open); if (MENU.open) SND.pick(MENU.i * 5);  // playing: open / close the menu
+}
+// The interface hides itself after 10 s without a press and comes back on any knob press or the switch (also the
+// mouse, or a non-drawing key). Turning the knobs to draw doesn't bring it back, so drawing stays immersive.
+const UI_IDLE = 10000; let uiAt = performance.now();
+function showUI() { uiAt = performance.now(); document.body.classList.remove('ui-hidden'); }
+setInterval(() => {
+  if (JOIN.open || MENU.open || KNOBS.setup) { showUI(); return; }   // never hide while a menu is up
+  if (performance.now() - uiAt > UI_IDLE) document.body.classList.add('ui-hidden');
+}, 500);
+addEventListener('pointermove', showUI); addEventListener('pointerdown', showUI);
+function knob3Press() {                                      // confirm: whatever menu is open
+  if (JOIN.open) confirmColor();
+}
+// ---- knob setup: whatever order or direction someone wired their encoders, the page maps them ----
+// KNOBS.role[p] = what physical knob p does (0 along, 1 around, 2 out); KNOBS.dir[p] = +1 or -1 so clockwise is "forward".
+const KNOBS = { role: [0, 1, 2], dir: [1, 1, 1], setup: null };
+try { const k = JSON.parse(localStorage.getItem('etch-knobs') || 'null');
+  if (k && [0, 1, 2].every(i => [0, 1, 2].includes(k.role[i]) && Math.abs(k.dir[i]) === 1) && new Set(k.role).size === 3) { KNOBS.role = k.role; KNOBS.dir = k.dir; }
+} catch (e) {}
+const KS_STEPS = [['along', 'move along the tube'], ['around', 'go around the tube'], ['out', 'move out from the tube']];
+function knobSetup(open = true) {
+  const el = document.getElementById('knobsetup');
+  if (!open) { KNOBS.setup = null; el.classList.add('gone'); return; }
+  if (JOIN.open) return;
+  KNOBS.setup = { step: 0, role: [-1, -1, -1], dir: [1, 1, 1] }; ksShow(); el.classList.remove('gone');
+}
+function ksShow() {
+  const st = KNOBS.setup.step, [word, what] = KS_STEPS[st];
+  document.getElementById('ksstep').textContent = `${st + 1} / 3`;
+  document.getElementById('kstitle').innerHTML = `Turn <i>${word}</i>`;
+  document.getElementById('ksline').textContent = `turn the knob you want to ${what}, clockwise`;
+}
+function ksTurn(p, v) {                                      // during setup: the first knob turned claims this step
+  const K = KNOBS.setup; if (K.role[p] !== -1) return;       // already given a job
+  K.role[p] = K.step; K.dir[p] = v > 0 ? 1 : -1; K.step++;
+  SND.pick(K.step * 7);
+  if (K.step < 3) { ksShow(); return; }
+  KNOBS.role = K.role; KNOBS.dir = K.dir;
+  try { localStorage.setItem('etch-knobs', JSON.stringify({ role: KNOBS.role, dir: KNOBS.dir })); } catch (e) {}
+  knobSetup(false); toast('<b>Knobs set up</b> — along, around, out', 2600);
+}
+// Knob speed: how many clicks of a knob make one step. Medium (2) by default; set from the menu or the button,
+// remembered on this computer. Only the physical knobs — the arrow keys stay one step per press.
+const SPEEDS = [['fast', 1], ['medium', 2], ['slow', 3]];
+const SPEED = { i: 1, clicks: 2, acc: [0, 0, 0] };
+try { const k = +localStorage.getItem('etch-speed'); if (SPEEDS[k]) { SPEED.i = k; SPEED.clicks = SPEEDS[k][1]; } } catch (e) {}
+function showSpeed() { const b = document.getElementById('knobspeed'); if (b) b.textContent = 'Knob speed · ' + SPEEDS[SPEED.i][0]; }
+function cycleSpeed() {
+  SPEED.i = (SPEED.i + 1) % SPEEDS.length; SPEED.clicks = SPEEDS[SPEED.i][1]; SPEED.acc = [0, 0, 0];
+  try { localStorage.setItem('etch-speed', SPEED.i); } catch (e) {}
+  showSpeed(); toast(`<b>Knob speed</b> ${SPEEDS[SPEED.i][0]} · ${SPEED.clicks} click${SPEED.clicks > 1 ? 's' : ''} a step`, 2000);
+}
+function handleLine(line) {
+  let m;
+  if (line[0] === 'H') { const h = +line.slice(2); if (h===32 || h===64) oledH = h; return; }
+  if (line[0] === 'D') { C.dev = line.slice(2); return; }
+  if (line === 'R') { onAck(); return; }
+  // 'B' is a legacy message the board sends alongside every P<i>; ignored here so a
+  // knob press isn't handled twice (once by index below, once by the legacy line).
+  if (line === 'B') return;
+  if ((m = /^E([0-2]):([+-]?\d+)$/.exec(line))) {             // physical knob -> its job and direction (see knob setup)
+    const p = +m[1], v = +m[2];
+    if (KNOBS.setup) { ksTurn(p, v); return; }
+    // knob speed: clicks build up, and every SPEED.clicks of them make one step (in either direction)
+    SPEED.acc[p] += v; const steps = Math.trunc(SPEED.acc[p] / SPEED.clicks); if (!steps) return;
+    SPEED.acc[p] -= steps * SPEED.clicks;
+    turn(KNOBS.role[p], steps * KNOBS.dir[p]);
+    return;
+  }
+  if (/^P[0-3]$/.test(line)) showUI();                        // any knob press or the switch: the interface comes back
+  if ((m = /^S3:([01])$/.exec(line))) { switchChange(m[1] === '1'); return; }   // the switch / button's position
+  if (line === 'P3') { buttonPress(); return; }                // (older controller firmware)
+  if (line === 'U3') return;
+  if ((m = /^([PU])([0-2])$/.exec(line))) line = m[1] + KNOBS.role[+m[2]];   // presses follow the knob's job too
+  if ((m = /^P([0-2])$/.exec(line))) {
+    if (KNOBS.setup) return;
+    if (MENU.open) { menuSelect(); return; }                     // the menu: any knob press picks the highlighted option
+    if (JOIN.open) { confirmColor(); return; }                   // choosing a colour: any knob press confirms
+    if (+m[1] === 2) knob3Press();                               // knob 3: confirm
+    else if (+m[1] === 0) knob1Down = performance.now();         // knob 1: decided on release (press = jump, hold = next brush)
+    else knob2Press();                                           // knob 2: press = draw / orbit, hold = clear
+    return;
+  }
+  if (line === 'U0') knob1Up();
+  if (line === 'U1') knob2Up();
+}
+
+// Bridge mode: page served by bridge.py (works in any browser, incl. Safari)
+if (!EMBED && location.protocol.startsWith('http')) {
+  writer = { write: msg => fetch('/frame', { method:'POST', body: msg.slice(2), headers: tabHeaders() }).then(r => { tabReply(r); return r; }) };
+  const es = new EventSource('/events');
+  es.onmessage = e => { C.rx++; C.lastRx = performance.now(); handleLine(e.data.trim()); };
+  es.onopen  = () => { status.textContent = 'controller connected'; S.dirty = true; };
+  es.onerror = () => { status.textContent = 'Bridge not reachable (is bridge.py running?)'; };
+  document.getElementById('connect').style.display = 'none';
+}
+
+async function readLoop() {
+  const dec = new TextDecoderStream();
+  port.readable.pipeTo(dec.writable).catch(()=>{});
+  const reader = dec.readable.getReader();
+  let buf = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let n;
+      while ((n = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0,n).trim(); buf = buf.slice(n+1); C.rx++; C.lastRx = performance.now();
+        handleLine(line);
+      }
+    }
+  } catch (err) { status.textContent = 'Disconnected'; writer = null; }
+}
+
+let pending = null, inflight = false, ackTimer = null;
+const C = { dev:'', tx:0, ack:0, rx:0, lastRx:0, timeouts:0 };
+function pump() {
+  if (!writer || inflight || !pending) return;
+  const f = pending; pending = null; inflight = true; C.tx++;
+  const msg = new Uint8Array(f.length + 2); msg[0] = 0xAA; msg[1] = 0x55; msg.set(f, 2);
+  writer.write(msg).catch(() => { status.textContent = 'Write failed'; writer = null; });
+  ackTimer = setTimeout(() => { C.timeouts++; inflight = false; pump(); }, 300);   // no ack: carry on anyway
+}
+function onAck() { C.ack++; clearTimeout(ackTimer); inflight = false; pump(); }
+function sendFrame(packed) { pending = packed; pump(); }
+setInterval(() => { if (writer) S.dirty = true; }, 400);             // periodic refresh self-heals glitches
+
+// ---- round screens on the XIAO: send the scene as one small text line; it redraws it itself ----
+// S t yaw pitch zoom shift mode k0 k1 k2 cx cy cz n x y z ...   (trail thinned to <= 200 points)
+// n = -1 means "drawing unchanged": most updates are just the ~80-byte header, so they arrive fast.
+// 'T' is 'S' plus the brush. Chaos and entropy are always 0 here, so the screens draw clean wireframes:
+// T t yaw pitch zoom shift mode k0 k1 k2 cx cy cz chaos entropy 0 0 brush n x y z ...
+// Strokes are separated by a break point (99 99 99), so a hop is never drawn as a line.
+// Field 14 is your liquid colour (0–23), field 15 where your pen is (edge a × 10000 + edge b × 100 + cell).
+const XIAO_BRUSH = [0, 2, 3, 4, 5];                        // Ribbon, Blueprint, Pixel, Notation, Wave in the XIAO's numbering
+function tftLine(withTrail) {
+  const f = v => (+v).toFixed(3), head = ['T', f(performance.now() / 1000), f(S.yaw),
+        f(S.pitch), f(S.zoom), 0, S.mode === 'orbit' ? 1 : 0, ...knob, ...S.cur.map(f),
+        0, 0, Math.max(0, LIQ_COLORS.findIndex(c => c.name === ME.colorName)),
+        PEN.a * 10000 + PEN.b * 100 + Math.min(24, Math.floor(PEN.s) + 1), XIAO_BRUSH[brush]];
+  if (!withTrail) return [...head, -1].join(' ');
+  const strokes = [...S.strokes, S.trail], total = strokes.reduce((n, st) => n + st.length, 0);
+  const step = Math.max(1, Math.ceil(total / 190)), pts = [];
+  for (const st of strokes) {
+    if (pts.length) pts.push([99, 99, 99]);                // break between strokes
+    for (let i = 0; i < st.length; i += step) pts.push(st[i]);
+    if (pts[pts.length - 1] !== st[st.length - 1]) pts.push(st[st.length - 1]);   // each stroke ends where it ended
+  }
+  return [...head, pts.length, ...pts.flatMap(p => p.slice(0, 3).map(f))].join(' ');
+}
+let tftBusy = false, tftSentVer = -1, tftSentAt = 0;
+// the liquid (level + mixed colour per cell, 4 hex characters each) and everyone else's pens
+const hex = v => Math.max(0, Math.min(15, Math.round(v * 15))).toString(16);
+function liquidLine() {
+  let out = 'L ';
+  for (let e = 0; e < 24; e++) for (let c = 0; c < CELLS; c++) {
+    const v = Math.min(1, LIQ.fill[e][c]), C = LIQ.col[e];
+    out += v < 0.03 ? '0000' : hex(v) + hex(C[c * 3]) + hex(C[c * 3 + 1]) + hex(C[c * 3 + 2]);
+  }
+  return out;
+}
+function peopleLine() {
+  const f = v => (+v).toFixed(2);
+  return ['Q', PEOPLE.length, ...PEOPLE.flatMap(pl => [...pl.smooth.map(f), hex(pl.color[0]) + hex(pl.color[1]) + hex(pl.color[2])])].join(' ');
+}
+let tftSideBusy = false, tftSide = 0;
+// Only one tab drives the hardware: this one claims it when it opens and whenever you click or type
+// in it, so a forgotten second tab can't fight it for the screens.
+const TAB_ID = Math.random().toString(36).slice(2, 10);
+let tabClaim = true, tabOwner = true;
+function tabHeaders() { const h = { 'X-Tab': TAB_ID }; if (tabClaim) { h['X-Claim'] = '1'; tabClaim = false; } return h; }
+function tabReply(r) { tabOwner = r.status !== 409; }
+for (const ev of ['focus', 'keydown', 'pointerdown']) addEventListener(ev, () => { tabClaim = true; });
+if (!EMBED && location.protocol.startsWith('http')) {
+  fetch('/config').then(r => r.json()).then(c => {
+    if (!c.tft) return;                                            // no XIAO plugged in: send nothing
+    setInterval(() => {
+      if (tftBusy) return;                                         // never pile requests up
+      const now = performance.now();
+      const changed = S.ver !== tftSentVer;
+      const full = changed || now - tftSentAt > 1000;              // also resend once a second, just in case
+      if (full) { tftSentVer = S.ver; tftSentAt = now; }
+      tftBusy = true;
+      fetch('/tft', { method:'POST', body: tftLine(full), headers: tabHeaders() }).then(tabReply).catch(() => {}).finally(() => { tftBusy = false; });
+    }, 33);                                                         // ~30 updates/s; the XIAO glides in between
+    setInterval(() => {                                             // the liquid and the people: 5 times a second, taking turns
+      if (tftSideBusy) return;
+      tftSideBusy = true; const body = (tftSide++ % 2) ? peopleLine() : liquidLine();
+      if (!tabOwner) { tftSideBusy = false; return; }               // another tab has the screens
+      fetch('/tft', { method:'POST', body, headers: tabHeaders() }).then(tabReply).catch(() => {}).finally(() => { tftSideBusy = false; });
+    }, 100);
+  }).catch(() => {});
+}
+setInterval(() => {
+  document.getElementById('dbg').textContent = writer ? `sent ${C.tx} | acks ${C.ack} | timeouts ${C.timeouts} | msgs in ${C.rx} | last msg ${((performance.now()-C.lastRx)/1000).toFixed(1)}s ago | board: frames,bytes,state = ${C.dev}` : '';
+}, 200);
+setBrush(0); renderPicker(); renderPeople();
+if (EMBED) {
+  confirmColor();
+  const n = Math.max(1, Math.min(20, +new URLSearchParams(location.search).get('people') || 8));
+  addClass(n);
+}
+document.getElementById('addperson').onclick = addPerson;
+document.getElementById('addclass').onclick = () => addClass(20);
+document.getElementById('newcolor').onclick = e => { e.currentTarget.blur(); changeColor(); };
+document.getElementById('newinst').onclick = e => { e.currentTarget.blur(); newInstrument(); };
+document.getElementById('setknobs').onclick = e => { e.currentTarget.blur(); knobSetup(true); };
+document.getElementById('knobspeed').onclick = e => { e.currentTarget.blur(); cycleSpeed(); }; showSpeed();
+document.getElementById('sound').onclick = SND.labelClick; SND.label();
+S.cur = penPos(); S.trail = [[...S.cur]]; penSmooth = [...S.cur];
+loop();   // start last, after every variable above exists
+</script>
+</body>
+</html>

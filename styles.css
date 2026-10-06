@@ -121,6 +121,8 @@ p { text-wrap: pretty; }
 #home { position: absolute; top: 90vh; left: 0; width: 1px; height: 1px; }
 .hero-pin { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
 #blob { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* preview: ?hero=etch shows Dimensional Etch here instead of the blob (script.js: startEtchHero) */
+.hero-etch { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; border: 0; display: block; pointer-events: none; background: transparent; transform-origin: 50% 50%; }   /* behind the hero text and the sections, so it bleeds into the work wall */
 /* the pixel cursor trail follows you down the whole site: over the hero's blob, but behind the
    sections' content (they sit at z 2) so it never paints over text, posters or photos */
 #hero-pix { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; pointer-events: none; }
