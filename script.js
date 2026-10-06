@@ -16,11 +16,17 @@
   // ── LOGO — "smart animate" between the skull's three poses from the Figma file.
   // Every shape is tweened (shadow side, eye position/size, jaw, colour) so the head
   // turns and looks around smoothly; hovering switches to snappy frame-to-frame blinks.
+  // Copies of the skull elsewhere (the About sticker) join in through addLogoRig(svg) and
+  // move in sync; hovering any of them blinks them all.
+  let addLogoRig = () => {};
   (function logo() {
     const el = document.getElementById('logo');
-    const plate = el.querySelector('#lg-plate'), jaw = el.querySelector('#lg-jaw');
-    const panels = [...el.querySelectorAll('.lg-panel')], eyes = [...el.querySelectorAll('.lg-eye')];
-    const teeth = [...el.querySelectorAll('.tooth')];
+    const rig = svg => ({
+      plate: svg.querySelector('#lg-plate, .lg-plate'), jaw: svg.querySelector('#lg-jaw, .lg-jaw'),
+      panels: [...svg.querySelectorAll('.lg-panel')], eyes: [...svg.querySelectorAll('.lg-eye')],
+      teeth: [...svg.querySelectorAll('.tooth')],
+    });
+    const rigs = [rig(el)];
     const POSES = [
       // look right (yellow)
       { px: 252, pw: 126, col: [255, 251, 137], e: [[315.5, 180.5], [370.5, 180.5]], r: 10.5, th: 29, jy: 255 },
@@ -30,12 +36,14 @@
       { px: 260, pw: 127, col: [72, 221, 139], e: [[283.5, 195.5], [338.5, 195.5]], r: 11, th: 16, jy: 242 },
     ];
     function apply(p) {
-      plate.setAttribute('x', p.px); plate.setAttribute('width', p.pw);
       const fill = `rgb(${p.col.map(c => Math.round(c)).join(',')})`;
-      panels.forEach(el => el.setAttribute('fill', fill));
-      eyes.forEach((el, k) => { el.setAttribute('cx', p.e[k][0]); el.setAttribute('cy', p.e[k][1]); el.setAttribute('r', p.r); });
-      teeth.forEach(el => el.setAttribute('height', p.th));
-      jaw.setAttribute('y', p.jy); jaw.setAttribute('height', 272 - p.jy);
+      for (const { plate, jaw, panels, eyes, teeth } of rigs) {
+        plate.setAttribute('x', p.px); plate.setAttribute('width', p.pw);
+        panels.forEach(el => el.setAttribute('fill', fill));
+        eyes.forEach((el, k) => { el.setAttribute('cx', p.e[k][0]); el.setAttribute('cy', p.e[k][1]); el.setAttribute('r', p.r); });
+        teeth.forEach(el => el.setAttribute('height', p.th));
+        jaw.setAttribute('y', p.jy); jaw.setAttribute('height', 272 - p.jy);
+      }
     }
     const mix = (A, B, t) => ({
       px: lerp(A.px, B.px, t), pw: lerp(A.pw, B.pw, t),
@@ -44,7 +52,7 @@
       r: lerp(A.r, B.r, t), th: lerp(A.th, B.th, t), jy: lerp(A.jy, B.jy, t),
     });
     const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    if (REDUCED) { apply(POSES[0]); return; }
+    if (REDUCED) { addLogoRig = svg => { rigs.push(rig(svg)); apply(POSES[0]); }; apply(POSES[0]); return; }
 
     // [pose, hold ms] — idle glides between these; hover snaps through `blink`
     const idle  = [[0, 1900], [1, 1100], [0, 1300], [2, 900], [0, 1600], [1, 700], [2, 800]];
@@ -66,8 +74,12 @@
       else glideTo(POSES[pose], () => { timer = setTimeout(next, hold); });
     }
     const swap = s => { clearTimeout(timer); cancelAnimationFrame(raf); seq = s; i = 0; next(); };
-    el.addEventListener('pointerenter', () => swap(blink));
-    el.addEventListener('pointerleave', () => swap(idle));
+    const hoverable = node => {
+      node.addEventListener('pointerenter', () => swap(blink));
+      node.addEventListener('pointerleave', () => swap(idle));
+    };
+    hoverable(el);
+    addLogoRig = (svg, host) => { rigs.push(rig(svg)); apply(cur); hoverable(host || svg); };
     apply(cur);
     timer = setTimeout(next, 1200);
   })();
@@ -292,7 +304,7 @@
           images: [{ ph: 'Box design (coming soon)', ratio: '16/9' }],
         },
       ],
-      tag: 'WIP — remaining suits + box design in progress',
+      tag: 'WIP: remaining suits + box design in progress',
     },
   ];
 
@@ -1447,4 +1459,203 @@
     heroPix.draw(t);
     contactPix.draw(t);
   })(0);
+
+  // ══════════════════════════════════════════════════════════════
+  // FAVOURITES — the skull guy from the logo sits on the front of the About
+  // photos; clicking him sends five favourite things flying out to land around
+  // the prints like stickers (click again and they fly back).
+  // ══════════════════════════════════════════════════════════════
+  (function favorites() {
+    const media = document.querySelector('.about-media');
+    if (!media) return;
+    const PAPER_WHITE = '#f4f1e8';   // die-cut sticker border
+    // the ones that fly out; x / y = where each lands, as % of the photo area; tilt in degrees
+    const FLYERS = [
+      { src: 'favorites/claptrap.png', smooth: true, x: -4, y: -8, tilt: -10,
+        label: 'Borderlands: one of the first games I ever played', credit: 'Icon: Borderlands 2' },
+      { strip: 'favorites/ghost-rider-idle.png', fw: 57, fh: 94, frames: 24, fps: 12, scale: 2, x: -3, y: 50, tilt: -6,
+        label: 'Ghost Rider: the comic I collect with my dad', credit: 'Sprite: Marvel Cosmic Invasion, ripped by Random Talking Bush' },
+      { src: 'favorites/gundam.png', scale: 2, x: 38, y: -12, tilt: 5,
+        label: 'Gundam: I build them in my spare time', credit: 'Sprite: SD Strike Freedom Gundam' },
+      // Shinx → Luxio → Luxray, slowly "evolving"
+      { strip: 'favorites/luxray-line.png', fw: 128, fh: 102, frames: 3, fps: 0.8, scale: 1, x: 80, y: 66, tilt: 8,
+        label: 'Pokémon Sun: the first Pokémon game I ever beat', credit: 'Icons: Pokémon Sun & Moon' },
+      { strip: 'favorites/gabumon-idle.png', fw: 29, fh: 32, frames: 10, fps: 8, scale: 4, x: 86, y: -6, tilt: 7,
+        label: 'Gabumon: me if I was a Digimon', credit: 'Sprite ripped by Ploaj' },
+    ];
+
+    // a sprite (or one frame of a strip) with a die-cut border: the silhouette,
+    // filled paper white, stamped in a ring around it, then the sprite on top
+    function spriteSticker(img, sx, sw, sh, scale, smooth) {
+      const b = Math.max(3, scale);               // border thickness
+      const w = sw * scale, h = sh * scale;
+      const cv = document.createElement('canvas');
+      cv.width = w + b * 2; cv.height = h + b * 2;
+      const x = cv.getContext('2d');
+      const sil = document.createElement('canvas');
+      sil.width = w; sil.height = h;
+      const sx2 = sil.getContext('2d');
+      sx2.imageSmoothingEnabled = !!smooth;
+      sx2.drawImage(img, sx, 0, sw, sh, 0, 0, w, h);
+      sx2.globalCompositeOperation = 'source-in';
+      sx2.fillStyle = PAPER_WHITE; sx2.fillRect(0, 0, w, h);
+      for (let a = 0; a < 16; a++) x.drawImage(sil, b + Math.round(Math.cos(a / 8 * Math.PI) * b), b + Math.round(Math.sin(a / 8 * Math.PI) * b));
+      x.imageSmoothingEnabled = !!smooth;
+      x.drawImage(img, sx, 0, sw, sh, b, b, w, h);
+      return cv;
+    }
+    const animated = [];
+    function tick(now) {
+      for (const a of animated) {
+        const f = Math.floor(now / 1000 * a.fps) % a.frames.length;
+        if (f !== a.cur) { a.cur = f; a.ctx.clearRect(0, 0, a.cv.width, a.cv.height); a.ctx.drawImage(a.frames[f], 0, 0); }
+      }
+      requestAnimationFrame(tick);
+    }
+    // load a sprite (still or strip) into an element as a canvas sticker
+    function mount(it, el) {
+      const img = new Image();
+      img.onload = () => {
+        if (it.strip) {
+          const frames = [];
+          for (let k = 0; k < it.frames; k++) frames.push(spriteSticker(img, k * it.fw, it.fw, it.fh, it.scale, false));
+          const cv = document.createElement('canvas');
+          cv.width = frames[0].width; cv.height = frames[0].height;
+          const ctx = cv.getContext('2d');
+          ctx.drawImage(frames[0], 0, 0);
+          el.appendChild(cv);
+          if (!REDUCED) { animated.push({ frames, fps: it.fps, cv, ctx, cur: 0 }); if (animated.length === 1) requestAnimationFrame(tick); }
+        } else {
+          el.appendChild(spriteSticker(img, 0, img.naturalWidth, img.naturalHeight, it.scale || 1, it.smooth));
+        }
+      };
+      img.onerror = () => el.remove();
+      img.src = it.strip || it.src;
+    }
+    const showTag = text => { tagEl.textContent = text; tagEl.classList.add('on'); };
+    const hideTag = () => tagEl.classList.remove('on');
+
+    const layer = document.createElement('div');
+    layer.className = 'about-pals';
+    media.appendChild(layer);
+
+    const flyers = FLYERS.map((it, k) => {
+      const el = document.createElement('div');
+      el.className = 'pal';
+      el.setAttribute('role', 'img');
+      el.setAttribute('aria-label', it.label);
+      el.style.setProperty('--x', it.x + '%');
+      el.style.setProperty('--y', it.y + '%');
+      el.style.setProperty('--tilt', it.tilt + 'deg');
+      el.style.setProperty('--delay', (k * 70) + 'ms');
+      mount(it, el);
+      el.addEventListener('pointerenter', () => showTag(`${it.label} (${it.credit})`));
+      el.addEventListener('pointerleave', hideTag);
+      layer.appendChild(el);
+      return el;
+    });
+
+    // the skull guy from the top-left logo (a copy, with its ids renamed so they stay unique)
+    const peek = document.createElement('button');
+    peek.type = 'button';
+    peek.className = 'peeker';
+    peek.setAttribute('aria-expanded', 'false');
+    peek.setAttribute('aria-label', 'The skull guy. Show my favourite things');
+    peek.innerHTML = document.querySelector('#logo svg').outerHTML
+      .replace(/id="lg(\d)"/g, 'id="pk$1"').replace(/url\(#lg(\d)\)/g, 'url(#pk$1)')
+      .replace(/ id="lg-(plate|jaw)"/g, ' class="lg-$1"');
+    addLogoRig(peek.querySelector('svg'), peek);   // looks around and blinks in sync with the logo
+    media.appendChild(peek);
+    peek.addEventListener('pointerenter', () => showTag(layer.classList.contains('out') ? 'Click to put them away' : 'Psst. Click me'));
+    peek.addEventListener('pointerleave', hideTag);
+    peek.addEventListener('click', () => {
+      const out = layer.classList.toggle('out');
+      peek.setAttribute('aria-expanded', String(out));
+      peek.setAttribute('aria-label', out ? 'Put my favourite things away' : 'The skull guy. Show my favourite things');
+      showTag(out ? 'Click to put them away' : 'Psst. Click me');
+      // flyers sit behind the photos while hidden, in front once they've landed
+      clearTimeout(layer.zTimer);
+      if (out) layer.classList.add('front');
+      else layer.zTimer = setTimeout(() => layer.classList.remove('front'), REDUCED ? 0 : 700);
+    });
+  })();
+
+  // ══════════════════════════════════════════════════════════════
+  // ABOUT BACKDROP — a slow halftone field behind About that bleeds into
+  // Contact: two drifting waves swell and shrink periwinkle dots (the same
+  // print language as the posters and the hero dissolve), and the dots
+  // square off into pixels as they reach Contact's pixel field. Dots near
+  // the pointer puff up. Runs only while it's on screen, at ≤30fps.
+  // ══════════════════════════════════════════════════════════════
+  (function aboutBackdrop() {
+    const about = document.getElementById('about');
+    const contact = document.getElementById('contact');
+    if (!about || !contact) return;
+    // one canvas behind both sections, so the field runs from About into the top of Contact
+    const cv = document.createElement('canvas');
+    cv.className = 'about-backdrop';
+    cv.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(cv);
+    const ctx = cv.getContext('2d');
+    const CELL = 16;
+    let W = 0, H = 0, top = 0, seam = 0, dpr = 1, visible = false, last = 0;
+    const ptr = { x: -1e4, y: -1e4, k: 0, target: 0 };
+
+    function size() {
+      top = about.getBoundingClientRect().top + scrollY;
+      seam = about.offsetHeight;                              // where About ends and Contact starts
+      W = document.documentElement.clientWidth;
+      H = Math.round(seam + contact.offsetHeight * 0.65);     // bleed two thirds of the way into Contact
+      cv.style.top = top + 'px'; cv.style.height = H + 'px';
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      draw(performance.now());
+    }
+    function draw(now) {
+      const t = REDUCED ? 0 : now / 1000;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = `rgb(${SWIRL})`;
+      ptr.k += (ptr.target - ptr.k) * 0.08;
+      const cols = Math.ceil(W / CELL), rows = Math.ceil(H / CELL);
+      for (let gy = 0; gy < rows; gy++) {
+        const y = (gy + 0.5) * CELL;
+        // faint under the About bar, full across the seam, then fading out inside Contact
+        const fade = smooth(0.06 * seam, 0.85 * seam, y) * (1 - smooth(seam + 40, H, y));
+        if (fade < 0.02) continue;
+        // round halftone dots square off into pixels as they cross into Contact
+        const sq = smooth(seam - 120, seam + 220, y);
+        ctx.globalAlpha = 0.08 + 0.3 * fade;
+        ctx.beginPath();
+        for (let gx = 0; gx < cols; gx++) {
+          const x = (gx + 0.5) * CELL;
+          let v = 0.5 + 0.28 * Math.sin(x * 0.009 + t * 0.5) * Math.cos(y * 0.013 - t * 0.35)
+                      + 0.22 * Math.sin((x + y) * 0.006 - t * 0.27);
+          const d = Math.hypot(x - ptr.x, y - ptr.y);
+          if (d < 180) v += 0.45 * ptr.k * (1 - d / 180) ** 2;
+          const r = CELL * 0.42 * smooth(0.45, 1, v) * (0.4 + 0.6 * fade);
+          if (r < 0.6) continue;
+          if (sq < 0.02) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+          else ctx.roundRect(x - r, y - r, r * 2, r * 2, r * (1 - sq));
+        }
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    function loop(now) {
+      if (visible && !REDUCED && now - last > 33) { last = now; draw(now); }
+      requestAnimationFrame(loop);
+    }
+    const onMove = e => {
+      ptr.x = e.clientX; ptr.y = e.clientY + scrollY - top; ptr.target = 1;
+    };
+    [about, contact].forEach(el => {
+      el.addEventListener('pointermove', onMove, { passive: true });
+      el.addEventListener('pointerleave', () => { ptr.target = 0; });
+    });
+    new IntersectionObserver(es => { visible = es[es.length - 1].isIntersecting; }).observe(cv);
+    const ro = new ResizeObserver(size);
+    ro.observe(about); ro.observe(contact); ro.observe(document.body);
+    addEventListener('load', size);
+  })();
 })();
