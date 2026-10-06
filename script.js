@@ -201,26 +201,102 @@
       sections: [
         {
           title: 'Overview', layout: 'statement',
-          body: ["Mofuda is a virtual pet in the spirit of a Tamagotchi."],
+          body: ["Mofuda is a Tamagotchi-style virtual pet: a bear with the patience of a Daruma, steeped in Buddhist teachings and wisdom."],
         },
         {
-          title: 'The Object', layout: 'split',
-          body: ["The handheld is a carved-wood body with a single round green button, leaf-and-blossom etching, and a paper tag on a loop."],
-          images: [{ ph: 'Handheld: front and back', ratio: '4/5' }],
+          title: 'Brief',
+          items: [
+            ['Course', 'Interactive Design II (NMDE 203), RIT'],
+            ['When', 'Spring 2023'],
+            ['Tools', 'Figma, Spline, After Effects'],
+          ],
+          images: [{ src: 'mofuda/cover.jpg', caption: 'Mofuda, at the foot of the mountain.' }],
         },
         {
-          title: 'The Game', layout: 'media-first', cols: 3,
-          images: [{ ph: 'Game screen: the bear', ratio: '3/4' }, { ph: 'Health meter', ratio: '3/4' }, { ph: 'Home screen', ratio: '3/4' }],
-          body: ["Its screen runs a 3D game where you look after a bear in a red daruma suit, with a health meter, sound, and a home button."],
+          title: 'Backstory',
+          body: [
+            "In a monastery beneath a Fuji-like mountain, monks once fused ancient wisdom with modern code. Their greatest creation was a Tamagotchi: not a toy, but a vessel. Inside it they placed the spirit of a bear and the patience of a Daruma. His name was Mofuda.",
+            "Years later, a curious sophomore from RIT found the Tamagotchi in a Kyoto antique shop. “It helps you understand yourself,” the shopkeeper said. They meditated, shared tea and sang karaoke. Before Robert left Japan, Mofuda disappeared, leaving one final message: “Goodbye. Love yourself. And take the path no one’s walking.”",
+          ],
+          images: [{ src: 'mofuda/process-comic.jpg', caption: 'The backstory as a comic.' }],
+          layout: 'split',
         },
         {
-          title: 'Process', cols: 2,
-          body: [{ ph: 'Process text: sketches, modeling the body, building the game.' }],
-          images: [{ ph: 'Sketches' }, { ph: 'Prototype / build' }],
+          title: 'Case and Character',
+          items: [
+            ['Case', '4.87 × 2.31'],
+            ['Screen', '250 × 200'],
+            ['Controls', 'Drag left and right, confirm button'],
+            ['Inspiration', 'Fidget Cube, traditional Tamagotchi, iPod Nano'],
+          ],
+          images: [{ src: 'mofuda/case.jpg', caption: 'The carved-wood case and its button states.' }],
+        },
+        {
+          title: 'Intro Screens',
+          body: ["An intro video inspired by the Game Boy Advance start-up plays first. A prompt asks you to hit the main button, then Mofuda rocks back and forth to show he’s alive. His health drops by 5 every second."],
+          images: [{ src: 'mofuda/intro.jpg', caption: 'Intro video, start prompt, idle.' }],
+        },
+        {
+          title: 'Loading Screens',
+          body: [
+            "Loading screens are the transitions between sections, and each one carries a piece of Mofuda’s wisdom. Each is coloured for its stage; karaoke got the funky colours. Some of the wisdom is about design, because Mofuda and Robert learned from each other.",
+            "One loading screen hides a secret: press the main button and you skip to a secret level.",
+          ],
+          images: [{ src: 'mofuda/loading.jpg', caption: 'Four loading screens, four pieces of wisdom.' }],
+        },
+        {
+          title: 'Menu',
+          body: ["The menu sends Mofuda to drink tea (teacup), sing karaoke (music note), meditate (lotus flower) or go back to idle (house). I know the drag-to-select controls hinder accessibility, and I’m aware of that problem."],
+          images: [{ src: 'mofuda/menu.jpg', caption: 'Menu assets over the meadow.' }],
+          layout: 'split',
+        },
+        {
+          title: 'Play Screens',
+          items: [
+            ['Meditate', '+5 health per second.'],
+            ['Karaoke', '+1 health per second.'],
+            ['Tea', '+5 health for each sip; keep feeding him tea.'],
+            ['Secret', 'A little too much tea and a bad trip. You get here by pressing the button on a loading screen: karma for anyone who mashes it to make loading go faster.'],
+          ],
+          body: ["Most people’s activities took health away, but when you do something you like, you feel better, not worse. Mofuda can also go past 100, because you’re not limited by the bounds of 100. Mofuda taught me that."],
+          images: [{ src: 'mofuda/play.jpg', caption: 'Meditation, karaoke, tea, and the secret stage.' }],
+        },
+        {
+          title: 'Health and Death', cols: 2,
+          body: ["Health starts at 100 in green. Below 70 the bar turns orange and the icon changes; below 30 it turns red, and below 15 the icon goes to the dead look. Under 5, the death animation plays: Mofuda ascends into his final form, says goodbye and leaves you with some wisdom."],
+          images: [
+            { src: 'mofuda/health-meters.png', caption: 'Health progression.' },
+            { src: 'mofuda/death.jpg', caption: 'His final form.' },
+          ],
+        },
+        {
+          title: 'Site Map and User Flow', cols: 2,
+          images: [
+            { src: 'mofuda/sitemap.png', caption: 'Site map.' },
+            { src: 'mofuda/userflow.png', caption: 'User flow.' },
+          ],
+        },
+        {
+          title: 'Process',
+          body: ["I modelled Mofuda in Spline, explored him as a Daruma, in pixel art and as an illustration, then built the prototype in Figma."],
+          images: [
+            { src: 'mofuda/process-renders.jpg', caption: 'Character explorations.' },
+            { src: 'mofuda/process-prototypes.jpg', caption: 'Early screens and case studies.' },
+            { src: 'mofuda/process-assets.jpg', caption: 'Health meters, icons and menu assets.' },
+          ],
+        },
+        {
+          title: 'Style', layout: 'split',
+          body: ["Greens for life and the button, warm browns for the wood case. Poppins for reading, Pixelade for the screen."],
+          images: [{ src: 'mofuda/style.png', caption: 'Palette and type.' }],
         },
         {
           title: 'Reflection',
-          body: [{ ph: 'Reflection text: what you learned making Mofuda.' }],
+          body: [
+            "I learned so much Figma and Spline, and a little more After Effects. I loved creating the character and bringing him to life.",
+            "My biggest challenge was components. I couldn’t figure them out, so I did everything by hand, and learned the hard way that doing it by hand costs you consistency between assets. I made the project harder than it had to be, and I hope to come back and rebuild it properly.",
+            "Mofuda is the embodiment of me reframing my situation at the time. He would say to take a step back and enjoy where you are, not where you’re going. Stay in the present; it is a gift. I learned how to model a character, how to use interactions, and how to reframe any situation.",
+          ],
         },
       ],
     },
