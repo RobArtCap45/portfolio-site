@@ -352,10 +352,23 @@
   let introP = 0;                        // 0 = just the big blob, 1 = normal size with the UI in
   const root = document.documentElement;
 
+  // once the intro has played, its scroll space is removed (and the scroll position moved up by the
+  // same amount, so nothing jumps): scrolling back up stops at the settled hero instead of the
+  // full-screen intro view. A reload plays the intro again.
+  let introDone = false;
+  function finishIntro() {
+    introDone = true;
+    const y = scrollY - innerHeight * 0.9;
+    root.style.scrollBehavior = 'auto';
+    root.classList.add('intro-done');            // the hero loses its 90vh intro stretch (styles.css)
+    scrollTo(0, Math.max(0, y));
+    root.style.scrollBehavior = '';
+  }
   function readHeroProgress() {
+    if (!introDone && -hero.getBoundingClientRect().top >= innerHeight * 0.9) finishIntro();
     const r = hero.getBoundingClientRect();
-    const scrolled = -r.top, introSpan = innerHeight * 0.9;
-    introP = clamp(scrolled / introSpan, 0, 1);
+    const scrolled = -r.top, introSpan = introDone ? 0 : innerHeight * 0.9;
+    introP = introDone ? 1 : clamp(scrolled / introSpan, 0, 1);
     const span = r.height - innerHeight - introSpan;
     heroProgress = span > 0 ? clamp((scrolled - introSpan) / span, 0, 1) : 0;
     const uiIn = smooth(0.55, 1, introP);
@@ -391,7 +404,7 @@
       root.style.scrollBehavior = 'auto';   // we drive every frame ourselves
       const t0 = performance.now(), dur = 1100;
       (function step(now) {
-        if (cancelled) { root.style.scrollBehavior = ''; return; }
+        if (cancelled || introDone) { root.style.scrollBehavior = ''; return; }   // done: finishIntro has moved the page
         const t = Math.min((now - t0) / dur, 1);
         const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;   // ease in-out cubic
         scrollTo(0, target * e);
@@ -790,7 +803,7 @@
       // % of the hero: over to the right of the name, then back to the middle as we fly in
       const shift = wide.matches ? 17 * settle * (1 - smooth(0, 0.45, heroProgress)) : 0;
       fr.style.transform = `translateX(${shift}%) scale(${scale})`;
-      const zoom = +lerp(1, 4, dive * dive).toFixed(3);    // eases in, then rushes through the frames
+      const zoom = +lerp(1, 1.6, dive * dive).toFixed(3);  // eases in; at 100% the camera is about halfway in, still outside the shape
       if (zoom !== sentZoom && fr.contentWindow) { fr.contentWindow.postMessage({ etchZoom: zoom }, location.origin); sentZoom = zoom; }
       // bleed into the work wall, fading out as its title climbs from the bottom of the screen to the top quarter
       const titleTop = workTitle.getBoundingClientRect().top;

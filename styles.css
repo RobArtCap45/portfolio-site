@@ -119,6 +119,10 @@ p { text-wrap: pretty; }
 /* 90vh of intro (blob shrinks, UI fades in) + the 130vh dissolve */
 #hero { position: relative; height: 320vh; }
 #home { position: absolute; top: 90vh; left: 0; width: 1px; height: 1px; }
+/* after the intro has played: no intro stretch, so you can't scroll back to it (script.js: finishIntro) */
+html.intro-done #hero { height: 230vh; }
+html.intro-done #home { top: 0; }
+html { overflow-anchor: none; }   /* finishIntro moves the scroll itself; the browser mustn't adjust it too */
 .hero-pin { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
 #blob { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 /* the hero: Dimensional Etch (script.js: startEtchHero); ?hero=blob shows the glass blob instead */
