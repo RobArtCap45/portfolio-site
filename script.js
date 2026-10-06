@@ -800,8 +800,8 @@
     (function follow() {
       const settle = smooth(0, 1, introP), dive = smooth(0, 1, heroProgress);
       const scale = lerp(wide.matches ? 1.6 : 1.3, wide.matches ? 1.18 : 1.05, settle);
-      // % of the hero: over to the right of the name, then back to the middle as we fly in
-      const shift = wide.matches ? 17 * settle * (1 - smooth(0, 0.45, heroProgress)) : 0;
+      // % of the hero: over to the right of the name, and it stays there while the camera zooms in
+      const shift = wide.matches ? 17 * settle : 0;
       fr.style.transform = `translateX(${shift}%) scale(${scale})`;
       const zoom = +lerp(1, 1.6, dive * dive).toFixed(3);  // eases in; at 100% the camera is about halfway in, still outside the shape
       if (zoom !== sentZoom && fr.contentWindow) { fr.contentWindow.postMessage({ etchZoom: zoom }, location.origin); sentZoom = zoom; }
