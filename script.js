@@ -124,16 +124,31 @@
         {
           title: 'Wireframes',
           body: ["I laid out the user flow and the features users can interact with."],
-          images: [{ ph: 'Wireframes', ratio: '16/9' }],
+          images: [
+            { src: 'pizza-wizard/wireframe-main-menu.png', caption: 'Main menu wireframe, annotated.' },
+            { src: 'pizza-wizard/wireframe-error-prevention.png', caption: 'Error prevention: confirming before an item is removed from the bag.' },
+          ],
         },
         {
           title: 'Style Guide',
           body: ["A guide to how the kiosk is styled, built on a design system with annotations for every detail."],
-          images: [{ ph: 'Style guide / design system', ratio: '16/9' }],
+          cols: 2,
+          images: [
+            { src: 'pizza-wizard/style-iconography.png', caption: 'Iconography' },
+            { src: 'pizza-wizard/style-color.png', caption: 'Color palette' },
+            { src: 'pizza-wizard/style-typography.png', caption: 'Typography' },
+            { src: 'pizza-wizard/style-buttons.png', caption: 'Buttons' },
+          ],
         },
         {
           title: 'Final Design',
-          images: [{ ph: 'Final design screens', ratio: '16/9' }],
+          cols: 2,
+          images: [
+            { src: 'pizza-wizard/final-loading.png', caption: 'Loading: “Casting up some pizza.”' },
+            { src: 'pw-menu.png', caption: 'Menu' },
+            { src: 'pw-item-select.png', caption: 'Item select, with required choices' },
+            { src: 'pizza-wizard/final-order-complete.png', caption: 'Order complete: receipt options' },
+          ],
         },
         {
           title: 'Reflection',
