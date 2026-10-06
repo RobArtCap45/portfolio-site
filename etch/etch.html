@@ -221,7 +221,7 @@ addEventListener('message', e => {
   if (e.origin === location.origin && e.data && typeof e.data.etchPause === 'boolean') EMBED_VIEW.paused = e.data.etchPause;
 });
 // EMBED: each person keeps only a short line, so old drawing erases from its tail as they go
-const EMBED_TRAIL = 180;
+const EMBED_TRAIL = 450;
 // SKETCH: A dimensional etch-a-sketch — you draw along a towering frame of six woven square tubes, and your line
 //         fills the tubes with liquid in your colour, which mixes with everyone else's as it flows downhill.
 // MOVE: ← → draw along the tube, ↑ ↓ around it, [ ] out from it (hold Space + arrows to orbit the camera).
@@ -886,8 +886,9 @@ function drawLiquid(w, h, t) {
 // someone turning the knobs: runs along a tube, spirals round it, drifts out and back, hops to
 // another line now and then. Everything they pour is in their colour and mixes with yours.
 const PEOPLE = [], ROOM_MAX = 30;
-const NAMES = ['Mika', 'Juno', 'Ravi', 'Oona', 'Theo', 'Lux', 'Pia', 'Sol', 'Noor', 'Ezra', 'Ines', 'Kai', 'Zoe', 'Omar', 'Lena',
-  'Arlo', 'Maya', 'Finn', 'Isla', 'Jude', 'Nia', 'Remy', 'Sage', 'Tove', 'Yuki', 'Cleo', 'Dev', 'Ida', 'Milo', 'Rhea', 'Ash', 'Bea'];
+// first names from the NMDE 404 class (Robert's classmates); each simulated person gets one at random
+const NAMES = ['Jayden', 'Bella', 'Harrison', 'Enzo', 'Kate', 'Sadie', 'Devin', 'Lily', 'Cailin', 'Dina', 'Addison', 'Rafael',
+  'Sofia', 'Sharon'];
 const TRAIL_BUDGET = 5000;                                   // points of drawing shared by everyone else, so a full class stays smooth
 function addPerson() {
   if (PEOPLE.length >= ROOM_MAX) { toast(`The room is full (${ROOM_MAX} people)`); return; }
@@ -930,8 +931,18 @@ function stepPeople(dt, now) {
     pl.smooth = pl.smooth.map((v, i) => v + (pl.cur[i] - v) * ks);
     const cap = EMBED ? EMBED_TRAIL : Math.max(120, Math.min(600, TRAIL_BUDGET / PEOPLE.length));   // the more people, the shorter each trail
     let total = pl.trail.length + pl.strokes.reduce((n, st) => n + st.length, 0);   // keep their drawing light:
-    while (total > cap && pl.strokes.length) total -= pl.strokes.shift().length;     // the oldest strokes fade out
-    if (pl.trail.length > cap) { pl.trail.splice(0, pl.trail.length - cap); pl.thinAt = 0; }
+    if (EMBED) {                                             // EMBED: erase point by point from the oldest end, so lines shrink from their tail
+      while (total > cap) {
+        const st = pl.strokes[0] || pl.trail, k = Math.min(total - cap, st.length - (st === pl.trail ? 2 : 0));
+        if (k <= 0) break;
+        st.splice(0, k); total -= k;
+        if (st === pl.trail) pl.thinAt = 0;
+        else if (st.length < 2) { total -= st.length; pl.strokes.shift(); }
+      }
+    } else {
+      while (total > cap && pl.strokes.length) total -= pl.strokes.shift().length;   // the oldest strokes fade out
+      if (pl.trail.length > cap) { pl.trail.splice(0, pl.trail.length - cap); pl.thinAt = 0; }
+    }
   }
 }
 
