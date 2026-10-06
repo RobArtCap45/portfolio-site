@@ -2,6 +2,14 @@
 // hero metaballs, halftone posters, pixel cursor trail, skull logo, case studies
 
 (() => {
+  // every load starts at the top so the blob intro always plays: no restored
+  // scroll position, and no jumping to a #section left in the address bar
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  if (location.hash) {
+    history.replaceState(null, '', location.pathname + location.search);
+    addEventListener('load', () => { if (scrollY > 2) scrollTo(0, 0); }, { once: true });   // in case the browser already jumped
+  }
+  scrollTo(0, 0);
   const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PAPER = [244, 243, 239];
   const BLUE  = [31, 71, 214];
@@ -307,6 +315,11 @@
       tag: 'WIP: remaining suits + box design in progress',
     },
   ];
+
+  // social links without an address yet: don't jump to the top when clicked
+  document.querySelectorAll('a[data-soon]').forEach(a => a.addEventListener('click', e => {
+    if (a.getAttribute('href') === '#') e.preventDefault();
+  }));
 
   const now = new Date();
   document.getElementById('today').textContent =
