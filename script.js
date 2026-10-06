@@ -105,7 +105,7 @@
         {
           title: 'The Brief',
           body: ["Design a self-serve ordering kiosk for a brand."],
-          images: [{ src: 'pizza-wizard/brief-splash.jpg', caption: 'The kiosk’s splash screen: “Mmmm Pizza!”' }],
+          images: [{ src: 'pizza-wizard/brief-splash.jpg?v=2', caption: 'The kiosk’s splash screen: “Mmmm Pizza!”' }],
         },
         {
           title: 'Brainstorm', layout: 'split',
