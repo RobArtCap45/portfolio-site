@@ -161,7 +161,8 @@ body.case-open #hero-pix { display: none; }
   position: absolute; left: var(--gutter); right: var(--gutter); bottom: var(--gutter);
   display: flex; justify-content: space-between; align-items: flex-end; gap: var(--xl);
 }
-.hero-foot .intro { max-width: 32ch; margin-bottom: var(--lg); font-size: var(--fs-body); line-height: 1.5; }
+.hero-foot .intro .intro-title { white-space: nowrap; }   /* the whole title on one line */
+.hero-foot .intro { max-width: none; margin-bottom: var(--lg); font-size: var(--fs-body); line-height: 1.5; }
 #hero h1 { font-size: var(--fs-display); line-height: 0.84; letter-spacing: -0.01em; margin: 0 0 0.08em -0.05em; }  /* bottom margin keeps the p descender off the screen edge */
 /* Coolvetica's r runs into a following t / o at display size — open those two pairs */
 #hero h1 .k-rt { margin-right: 0.02em; }   /* r joins the t's crossbar */
@@ -397,6 +398,7 @@ body.case-open #nav, body.case-open #logo { opacity: 0; visibility: hidden; }
   .about-media { width: 88%; margin-right: auto; }   /* room for the tilted corners */
 }
 @media (max-width: 640px) {
+  .hero-foot .intro .intro-title { white-space: normal; }   /* narrow phones: let it wrap */
   .about-pals .pal canvas { width: auto; height: auto; max-width: 96px; max-height: 120px; }   /* smaller stickers on phones */
   .about-media > .peeker svg { width: 64px; height: 71px; }
   :root { --xl: 32px; --xxl: 64px; }
