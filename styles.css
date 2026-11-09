@@ -290,7 +290,7 @@ body.case-open #hero-pix { display: none; }
   padding: var(--xxl) var(--gutter) var(--gutter);
 }
 .contact-ui h2 { font-size: clamp(56px, 10vw, 180px); line-height: 0.86; letter-spacing: -0.01em; margin-top: var(--xl); color: var(--paper); mix-blend-mode: difference; }
-.contact-links { display: flex; flex-wrap: wrap; gap: var(--s); pointer-events: auto; }
+.contact-links { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s); pointer-events: auto; }
 .contact-links a {
   display: inline-flex; gap: var(--s); align-items: center; text-decoration: none;
   background: var(--paper); color: var(--ink); padding: var(--s) var(--m); font-size: var(--fs-lead);
@@ -301,7 +301,14 @@ body.case-open #hero-pix { display: none; }
 /* icon-only circles */
 .contact-links a { width: 52px; height: 52px; padding: 0; border-radius: 50%; justify-content: center; }
 .contact-links { margin-bottom: var(--lg); }
-.contact-foot { display: flex; justify-content: space-between; gap: var(--m); padding-top: 12px; border-top: 1px solid var(--rule); color: var(--muted); }
+.contact-foot { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding-top: 12px; border-top: 1px solid var(--rule); color: var(--muted); }
+/* big centered footer: headline, icons and legal line share one centre axis */
+.contact-ui { align-items: center; text-align: center; }
+.contact-ui > * { width: 100%; }
+.contact-ui .sec-bar { text-align: left; }
+
+/* rotating word in the contact headline (drawn on a canvas by script.js) */
+.swap { display: inline-block; position: relative; }
 
 /* ── CASE STUDY — circle reveal from the click point ── */
 #case {

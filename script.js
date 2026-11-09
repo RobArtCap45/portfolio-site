@@ -1234,28 +1234,36 @@
   const stageK  = () => smooth(0.04, 0.22, heroProgress);
   const stageSq = () => smooth(0.62, 0.95, heroProgress);
 
-  // pixel kanji for the trail: each glyph is rendered at 9px, its alpha snapped to
-  // hard on/off pixels, then drawn at exactly 2× into an 18px cell with smoothing off.
-  // Simple characters so they stay legible at pixel size.
-  const KANJI = ['日', '月', '山', '木', '水', '火', '人', '口', '目', '田', '光', '心'];
+  // pixel critters for the trail: Galaga-style 9×9 sprites ('#' = on), drawn at exactly 2×
+  // (18px cell) with smoothing off so every pixel stays crisp.
+  const CRITTERS = [
+    // monkey
+    ['.........', '..#####..', '.#######.', '##.###.##', '#.#.#.#.#', '.#######.', '.##...##.', '..#####..', '.........'],
+    // frog
+    ['.........', '.##...##.', '##.###.##', '#########', '#########', '##.....##', '.#######.', '..#...#..', '.........'],
+    // alien
+    ['.#.....#.', '..#...#..', '.#######.', '##.###.##', '#..###..#', '#########', '.#######.', '..##.##..', '.........'],
+    // ghost
+    ['..#####..', '.#######.', '##.###.##', '##.###.##', '#########', '####.####', '#########', '#########', '#.##.##.#'],
+    // cat
+    ['#.......#', '##.....##', '#########', '##.###.##', '#########', '###.#.###', '.#######.', '..#####..', '.........'],
+    // robot
+    ['....#....', '....#....', '.#######.', '##.###.##', '#########', '#.#.#.#.#', '.#######.', '..#...#..', '.........'],
+    // octopus
+    ['..#####..', '.#######.', '#########', '##.###.##', '#########', '#########', '.#######.', '#.#.#.#.#', '.........'],
+    // owl
+    ['#.......#', '##.....##', '#########', '#..###..#', '#.#.#.#.#', '#..###..#', '#########', '.#######.', '..#.#.#..']
+  ];
   const kanjiCache = {};
   function kanjiGlyphs(rgb) {
     const key = rgb.join(',');
     if (kanjiCache[key]) return kanjiCache[key];
-    return (kanjiCache[key] = KANJI.map(ch => {
+    return (kanjiCache[key] = CRITTERS.map(rows => {
       const c = document.createElement('canvas');
       c.width = c.height = 9;
       const x = c.getContext('2d');
-      x.font = '9px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", "MS Gothic", sans-serif';
-      x.textAlign = 'center'; x.textBaseline = 'middle';
-      x.fillStyle = '#000';
-      x.fillText(ch, 4.5, 5);
-      const img = x.getImageData(0, 0, 9, 9), d = img.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const on = d[i + 3] > 55;   // low cutoff keeps thin strokes (月's right side)
-        d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = on ? 255 : 0;
-      }
-      x.putImageData(img, 0, 0);
+      x.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+      rows.forEach((row, ry) => { for (let rx = 0; rx < 9; rx++) if (row[rx] === '#') x.fillRect(rx, ry, 1, 1); });
       return c;
     }));
   }
@@ -1436,7 +1444,7 @@
       if (k < 1 && !this.opts.trailAfterLiquid) this.drawLiquid(energy, 1 - k, rgb);
       if (k <= 0) return;
 
-      // dots → pixels (with pixel kanji in the mid-energy cells)
+      // dots → pixels (with pixel critters in the mid-energy cells)
       const glyphs = kanjiGlyphs(rgb);
       ctx.imageSmoothingEnabled = false;
       for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
@@ -1448,8 +1456,8 @@
           continue;
         }
         ctx.fillStyle = `rgba(${fg},${Math.min(1, e * 1.4) * k})`;
-        if (sq > 0.5 && e > 0.4 && e <= 0.7) {
-          ctx.globalAlpha = Math.min(1, e * 1.4) * k;
+        if (sq > 0.5 && e > 0.08 && e <= 0.7 && seeded(x * 57.1 + y * 13.7) < 0.7) {   // ~70% of trail cells are critters, ~30% blue blocks
+          ctx.globalAlpha = Math.min(1, 0.35 + e * 1.4) * k;
           ctx.drawImage(glyphs[(x * 7 + y * 3) % glyphs.length], px, py, PC, PC);
           ctx.globalAlpha = 1;
           continue;
@@ -1826,4 +1834,104 @@
     ro.observe(about); ro.observe(contact); ro.observe(document.body);
     addEventListener('load', size);
   })();
+})();
+
+// contact headline: the last word dissolves into periwinkle pixels and rebuilds as the next one.
+// The real text stays in the DOM (transparent) for layout and screen readers; a canvas draws it.
+(() => {
+  const el = document.getElementById('swap');
+  if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const words = ['inventive', 'bold', 'playful', 'thoughtful', 'remarkable', 'delightful'];
+  const DUR = 1100, EVERY = 3000;
+  let idx = 0, busy = false, cv, ctx, W, H, PAD, DPR, CELL, baseY, font, ls, color, blue, cols, rows, bias;
+
+  function textCanvas(word) {
+    const c = document.createElement('canvas');
+    c.width = W * DPR; c.height = H * DPR;
+    const x = c.getContext('2d');
+    x.scale(DPR, DPR);
+    x.font = font; x.letterSpacing = ls; x.fillStyle = color;
+    x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+    x.fillText(word + '.', W / 2, PAD + baseY);
+    return c;
+  }
+  // which grid cells contain ink, so blue blocks only appear where letters are
+  function inkMask(c) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const m = new Uint8Array(cols * rows);
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      for (const [fx, fy] of [[.25, .25], [.75, .25], [.5, .5], [.25, .75], [.75, .75]]) {
+        const px = Math.min(c.width - 1, Math.floor((x + fx) * CELL * DPR)), py = Math.min(c.height - 1, Math.floor((y + fy) * CELL * DPR));
+        if (d[(py * c.width + px) * 4 + 3] > 60) { m[y * cols + x] = 1; break; }
+      }
+    }
+    return m;
+  }
+  function build() {
+    if (busy) return;
+    const h2 = el.parentElement, cs = getComputedStyle(h2);
+    color = cs.color; blue = getComputedStyle(document.documentElement).getPropertyValue('--swirl').trim() || '#6b8fff';
+    const fs = parseFloat(cs.fontSize);
+    font = `${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ls = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+    DPR = Math.min(2, devicePixelRatio || 1);
+    PAD = Math.round(fs * 0.35);
+    CELL = Math.max(4, Math.round(fs / 9));
+    // reserve room for the widest word so the layout never jumps
+    const m = document.createElement('canvas').getContext('2d');
+    m.font = font; m.letterSpacing = ls;
+    const widest = Math.max(...words.map(w => m.measureText(w + '.').width));
+    el.style.minWidth = Math.ceil(widest + fs * 0.05) + 'px';
+    el.style.color = 'transparent';
+    el.textContent = words[idx];
+    // baseline offset of the real text inside the span
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    el.appendChild(probe);
+    baseY = probe.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    probe.remove();
+    W = el.offsetWidth; H = el.offsetHeight + PAD * 2;
+    cols = Math.ceil(W / CELL); rows = Math.ceil(H / CELL);
+    bias = Float32Array.from({ length: cols * rows }, (_, i) => Math.random() * 0.6 + 0.4 * ((i % cols) / cols));
+    if (!cv) { cv = document.createElement('canvas'); cv.setAttribute('aria-hidden', 'true'); ctx = cv.getContext('2d'); }
+    el.appendChild(cv);
+    cv.style.cssText = `position:absolute;left:0;top:${-PAD}px;width:${W}px;height:${H}px;pointer-events:none`;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(textCanvas(words[idx]), 0, 0, W, H);
+  }
+  function run() {
+    busy = true;
+    const next = (idx + 1) % words.length;
+    const A = textCanvas(words[idx]), B = textCanvas(words[next]);
+    const mA = inkMask(A), mB = inkMask(B);
+    const t0 = performance.now();
+    const frame = now => {
+      const p = Math.min(1, (now - t0) / DUR);
+      const first = p < 0.5, q = first ? p * 2 : (p - 0.5) * 2, band = 0.1;
+      ctx.clearRect(0, 0, W, H);
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x, t = bias[i], sx = x * CELL, sy = y * CELL;
+        // old word: cells vanish as q passes their threshold; new word: cells appear
+        const showOld = first && t >= q, showNew = !first && t <= q;
+        const flash = Math.abs(t - q) < band && (first ? mA[i] : mB[i]);
+        if (flash) { ctx.fillStyle = blue; ctx.fillRect(sx, sy, CELL, CELL); }
+        else if (showOld || showNew) {
+          ctx.drawImage(showOld ? A : B, sx * DPR, sy * DPR, CELL * DPR, CELL * DPR, sx, sy, CELL, CELL);
+        }
+      }
+      if (p < 1) requestAnimationFrame(frame);
+      else { idx = next; el.textContent = words[idx]; el.appendChild(cv); busy = false; build(); }
+    };
+    el.textContent = words[next];  // layout + screen readers get the new word straight away
+    el.appendChild(cv);
+    requestAnimationFrame(frame);
+  }
+  document.fonts.ready.then(() => {
+    build();
+    setInterval(() => { if (!document.hidden && !busy) run(); }, EVERY);
+    let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(build, 200); });
+  });
 })();
