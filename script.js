@@ -200,6 +200,14 @@
           ],
         },
         {
+          title: 'Final', layout: 'media-first',
+          body: ["The finished etch, drawn live with the controller."],
+          images: [
+            { video: 'etch/walkthrough.mp4', poster: 'etch/walkthrough.jpg', caption: 'A full drawing session on critique day, sped up three times.' },
+            { video: 'etch/class-drawing.mp4', poster: 'etch/class-drawing.jpg', caption: 'A simulated class of twenty drawing in Notation, with the liquid filling the frames.' },
+          ],
+        },
+        {
           title: 'Reflection',
           body: [
             "This project taught me how far a simple prompt can go when I keep asking what the next layer should be: from a moving square to a shared space where a class draws, pours and plays music together.",
