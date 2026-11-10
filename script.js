@@ -95,6 +95,120 @@
   // ── PROJECTS ─────────────────────────────────────────────────
   const PROJECTS = [
     {
+      title: 'Dimensional Etch', cat: 'Interactive — Physical computing', img: 'etch/controller-angled.jpg',
+      sections: [
+        {
+          title: 'Overview', layout: 'statement',
+          body: ["A drawing toy played with three knobs. You climb a towering frame of woven square tubes, your line fills them with liquid in your colour, and everyone in the room plays an instrument in one orchestra."],
+        },
+        {
+          title: 'Brief',
+          items: [
+            ['Course', 'Interactive 4 (NMDE 404), RIT — Prof. Mike Minerva'],
+            ['When', 'Fall 2026, presented at critique on October 5'],
+            ['Brief', 'Start from a 16px square that moves with the arrow keys. Grow it into a dimensional etch-a-sketch with an orbit mode, then build a real controller: an Arduino, three encoders and a button.'],
+            ['Tools', 'HTML, CSS and JavaScript (Canvas, WebGL, Web Audio), Arduino Leonardo, ESP32, Python, AI-assisted coding'],
+          ],
+          images: [{ video: 'etch/sketch-on-screen.mp4', poster: 'etch/sketch-on-screen.jpg', caption: 'The controller driving the sketch on the laptop.' }],
+        },
+        {
+          title: 'From a Square to a Shape',
+          body: [
+            "It started with the class prompt: a square that moves with the arrow keys. That became a wire sphere, then a cube, then six square frames woven through each other, with 24 cells along every edge for the pen to travel.",
+            "Along the way I built a version called Controlled Chaos, where the more you drew, the more the clean wireframe broke apart into a collage of chrome, stickers and arrows. It was fun, but the drawing got lost in it, so I went back to clean wireframes and put the energy into the liquid and the sound.",
+          ],
+          cols: 2,
+          images: [
+            { src: 'etch/process-1-etch2.jpg', caption: 'A wire sphere, with the line drawn on its surface.' },
+            { src: 'etch/process-2-tubes.jpg', caption: 'A cube inside a cube.' },
+            { src: 'etch/process-3-chaos-calm.jpg', caption: 'Six woven frames, early in Controlled Chaos.' },
+            { src: 'etch/process-4-chaos-full.jpg', caption: 'Controlled Chaos at full entropy. I cut this direction.' },
+          ],
+        },
+        {
+          title: 'Drawing on the Frame',
+          body: ["The pen always stays on the structure, so the drawing reads as part of the shape. You go around a frame's square as many times as you like, and press a knob to jump to the closest line on another frame. Each person draws with a brush."],
+          items: [
+            ['Knob 1', 'Along the tube. Press to jump to another line; hold for the next brush.'],
+            ['Knob 2', 'Around the tube. Press to orbit the camera; hold to clear.'],
+            ['Knob 3', 'Out from the tube. Press to confirm.'],
+            ['Switch', 'Opens the menu: change colour, new instrument, knob speed.'],
+          ],
+          cols: 3,
+          images: [
+            { src: 'etch/brush-ribbon.jpg', caption: 'Ribbon' },
+            { src: 'etch/brush-blueprint.jpg', caption: 'Blueprint' },
+            { src: 'etch/brush-pixel.jpg', caption: 'Pixel' },
+            { src: 'etch/brush-notation.jpg', caption: 'Notation' },
+            { src: 'etch/brush-wave.jpg', caption: 'Wave: a waveform of the sound that was playing as you drew.' },
+          ],
+        },
+        {
+          title: 'Liquid',
+          body: [
+            "Drawing pours liquid into the tube you're on, in the colour you chose when you came in. It runs downhill inside each frame, fills it box by box, and mixes with everyone else's colours by volume. It's rendered as metaballs on the GPU, so it reads like one glossy liquid rather than dots.",
+          ],
+        },
+        {
+          title: 'An Orchestra',
+          body: [
+            "Every person is dealt an instrument, like a seat in an orchestra, from whichever section the room needs most: foundation, harmony, melody or colour. Climbing higher on the shape plays higher notes.",
+            "Three rules keep 20 or more people sounding good together. Everyone plays inside one slow chord progression, so no note clashes. Everyone lands on a shared beat. And a conductor lets only a few notes through per beat, so the room gets sparser and softer as it fills. Your own instrument stays just a little louder than everyone else's.",
+          ],
+          items: [
+            ['Harmony', 'D major: Dmaj9, Bm11, Gmaj9, A6sus, a chord every two bars'],
+            ['Pulse', '76 bpm. Other people on eighth notes, you on sixteenths'],
+            ['Sections', 'Double bass and timpani to glockenspiel and music box, 24 instruments in all'],
+          ],
+        },
+        {
+          title: 'Together',
+          body: ["The etch is built to the class's multiplayer spec, so the whole class can draw on one shape at once. Each person picks a liquid colour on the way in, carries a name tag, and is heard in their own instrument. With 20 people in the room it stays smooth and readable."],
+          images: [
+            { src: 'etch/final-class.jpg', caption: 'Twelve people drawing on the frame at once, every brush and colour mixing.' },
+            { video: 'etch/lab-session-drawing.mp4', poster: 'etch/lab-session-drawing.jpg', caption: 'Drawing in the lab.' },
+          ],
+        },
+        {
+          title: 'The Controller',
+          body: ["An Arduino Leonardo inside a Doritos and Lay's box. Three rotary encoders and a toggle switch on top, and the wiring on a breadboard inside, all held together with cardboard and tape."],
+          items: [
+            ['Board', 'Arduino Leonardo'],
+            ['Inputs', 'Three KY-040 rotary encoders and a toggle switch'],
+            ['Modes', 'Drives the etch through a small Python bridge, or works as a USB keyboard on the class site'],
+            ['Wiring', 'Copes with any pins, button type or knob direction; mistakes are caught when it compiles'],
+          ],
+          cols: 2,
+          images: [
+            { src: 'etch/controller-angled.jpg', caption: 'The controller: three round screens, three knobs and a switch.' },
+            { src: 'etch/controller-inside.jpg', caption: 'Opened up: the Leonardo, encoders and breadboard.' },
+            { video: 'etch/handheld-drawing.mp4', poster: 'etch/handheld-drawing.jpg', caption: 'Drawing with the controller in hand.' },
+            { src: 'etch/controller-laptop.jpg', caption: 'Choosing a liquid colour with the knobs.' },
+          ],
+        },
+        {
+          title: 'Round Screens',
+          body: ["An ESP32 drives three 1.28-inch round displays on the controller, so you can follow your drawing without looking up. It draws everything itself from small updates the page sends, about fifteen times a second."],
+          items: [
+            ['Screen 1', 'The whole shape from above, with everyone as a dot'],
+            ['Screen 2', 'A pen camera, looking up the tube you are on'],
+            ['Screen 3', 'Your brush, the three knobs as dials, and a glass of your liquid that fills as the shape does'],
+          ],
+          images: [
+            { video: 'etch/round-displays-closeup.mp4', poster: 'etch/round-displays-closeup.jpg', caption: 'The three round screens following the drawing.' },
+            { src: 'etch/wiring-screens.png', caption: 'Wiring: the screens share four signal wires; each has its own CS pin.' },
+          ],
+        },
+        {
+          title: 'Reflection',
+          body: [
+            "This project taught me how far a simple prompt can go when I keep asking what the next layer should be: from a moving square to a shared space where a class draws, pours and plays music together.",
+            "It was also my first time taking a project from code to wires to cardboard. Debugging went both ways, from a screen that stayed blank because of one loose wire to knobs that turned the wrong way because of how they were read. Building the controller so it works with anyone's wiring taught me to design for the people who would use it, not just for my own setup.",
+          ],
+        },
+      ],
+    },
+    {
       title: 'Pizza Wizard', cat: 'UX/UI — Ordering kiosk', img: 'pw-logo.png', fit: 'contain',
       bg: 'pw-bg.png',   // brand pattern behind the logo in the case study
       // Case study, top to bottom. Each section: title, body (paragraphs), optional
@@ -1111,7 +1225,11 @@
     if (text != null) n.textContent = text;
     return n;
   };
-  // an image entry: 'file.png', { src, caption }, or a placeholder { ph, ratio }
+  // a video plays (muted, looping) only while it's on screen, so a long case study doesn't stream everything at once
+  const vidWatch = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) e.target.play().catch(() => {}); else e.target.pause();
+  }), { threshold: 0.25 }) : null;
+  // an image entry: 'file.png', { src, caption }, a video { video, poster, caption }, or a placeholder { ph, ratio }
   function figure(im, title) {
     const o = typeof im === 'string' ? { src: im } : im;
     const fig = make('figure', 'case-fig');
@@ -1120,6 +1238,13 @@
       box.append(make('span', null, 'Image'), make('span', null, o.ph));
       box.style.aspectRatio = o.ratio || '4/3';
       fig.appendChild(box);
+    } else if (o.video) {
+      const v = make('video');
+      v.src = o.video; if (o.poster) v.poster = o.poster;
+      v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'none';
+      v.setAttribute('aria-label', o.caption || `${title} video`);
+      if (vidWatch) vidWatch.observe(v); else v.autoplay = true;
+      fig.appendChild(v);
     } else {
       const img = make('img');
       img.src = o.src; img.alt = o.caption || `${title} screen`; img.loading = 'lazy';

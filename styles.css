@@ -355,7 +355,8 @@ body.case-open #hero-pix { display: none; }
 .case-items dd { font-size: 18px; line-height: 1.5; }
 /* images — one per row, or side by side with `cols` */
 .case-figs { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: var(--m); margin-top: var(--lg); }
-.case-fig img { width: 100%; border: 1px solid var(--rule); }
+.case-fig img, .case-fig video { width: 100%; border: 1px solid var(--rule); }
+.case-fig video { display: block; aspect-ratio: 16/9; object-fit: cover; background: var(--rule); }
 /* placeholders — swap for real images/text later */
 .case-ph {
   display: flex; flex-direction: column; justify-content: space-between; gap: var(--s);
