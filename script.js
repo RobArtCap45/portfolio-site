@@ -30,11 +30,13 @@
   (function logo() {
     const el = document.getElementById('logo');
     const rig = svg => ({
-      plate: svg.querySelector('#lg-plate, .lg-plate'), jaw: svg.querySelector('#lg-jaw, .lg-jaw'),
+      plate: svg.querySelector('#lg-plate, .lg-plate'), bar: svg.querySelector('.lg-bar'), jaw: svg.querySelector('#lg-jaw, .lg-jaw'),
       panels: [...svg.querySelectorAll('.lg-panel')], eyes: [...svg.querySelectorAll('.lg-eye')],
       teeth: [...svg.querySelectorAll('.tooth')],
     });
     const rigs = [rig(el)];
+    // px/pw: shadow plate · py/ph: panel top + height (the white top bar fills the gap above) ·
+    // col: panel colour · e: eye centres · r: eye radius · th: tooth height · jy: jaw top (272 = no jaw)
     const POSES = [
       // look right (yellow)
       { px: 252, pw: 126, col: [255, 251, 137], e: [[315.5, 180.5], [370.5, 180.5]], r: 10.5, th: 29, jy: 255 },
@@ -42,19 +44,28 @@
       { px: 260, pw: 129, col: [137, 202, 255], e: [[265.5, 171.5], [320.5, 171.5]], r: 11.5, th: 29, jy: 255 },
       // look down, jaw shut (green)
       { px: 260, pw: 127, col: [72, 221, 139], e: [[283.5, 195.5], [338.5, 195.5]], r: 11, th: 16, jy: 242 },
-    ];
+      // squashed forehead, eyes peeking up from the bottom (orange)
+      { px: 260, pw: 127, col: [255, 128, 0], py: 176, ph: 41, e: [[273, 207], [328, 207]], r: 11.5, th: 48, jy: 272 },
+      // tall face, eyes low and wide (magenta)
+      { px: 260, pw: 127, col: [233, 112, 254], py: 136, ph: 81, e: [[296, 200], [351, 200]], r: 11.5, th: 48, jy: 272 },
+      // eyes on a diagonal, high left / low right (gold)
+      { px: 260, pw: 127, col: [255, 227, 42], py: 136, ph: 81, e: [[290, 165], [353, 198]], r: 11.5, th: 48, jy: 272 },
+      // eyes on the other diagonal, low left / high right (periwinkle)
+      { px: 260, pw: 127, col: [128, 135, 255], e: [[291, 192], [353, 160]], r: 11.5, th: 48, jy: 272 },
+    ].map(p => ({ py: 141, ph: 76, ...p }));
     function apply(p) {
       const fill = `rgb(${p.col.map(c => Math.round(c)).join(',')})`;
-      for (const { plate, jaw, panels, eyes, teeth } of rigs) {
+      for (const { plate, bar, jaw, panels, eyes, teeth } of rigs) {
         plate.setAttribute('x', p.px); plate.setAttribute('width', p.pw);
-        panels.forEach(el => el.setAttribute('fill', fill));
+        bar.setAttribute('height', p.py - 132);
+        panels.forEach(el => { el.setAttribute('fill', fill); el.setAttribute('y', p.py); el.setAttribute('height', p.ph); });
         eyes.forEach((el, k) => { el.setAttribute('cx', p.e[k][0]); el.setAttribute('cy', p.e[k][1]); el.setAttribute('r', p.r); });
         teeth.forEach(el => el.setAttribute('height', p.th));
         jaw.setAttribute('y', p.jy); jaw.setAttribute('height', 272 - p.jy);
       }
     }
     const mix = (A, B, t) => ({
-      px: lerp(A.px, B.px, t), pw: lerp(A.pw, B.pw, t),
+      px: lerp(A.px, B.px, t), pw: lerp(A.pw, B.pw, t), py: lerp(A.py, B.py, t), ph: lerp(A.ph, B.ph, t),
       col: A.col.map((c, k) => lerp(c, B.col[k], t)),
       e: A.e.map((xy, k) => [lerp(xy[0], B.e[k][0], t), lerp(xy[1], B.e[k][1], t)]),
       r: lerp(A.r, B.r, t), th: lerp(A.th, B.th, t), jy: lerp(A.jy, B.jy, t),
@@ -63,8 +74,8 @@
     if (REDUCED) { addLogoRig = svg => { rigs.push(rig(svg)); apply(POSES[0]); }; apply(POSES[0]); return; }
 
     // [pose, hold ms] — idle glides between these; hover snaps through `blink`
-    const idle  = [[0, 1900], [1, 1100], [0, 1300], [2, 900], [0, 1600], [1, 700], [2, 800]];
-    const blink = [[1, 130], [0, 130], [2, 130], [0, 130]];
+    const idle  = [[0, 1900], [1, 1100], [3, 900], [0, 1300], [2, 900], [5, 800], [0, 1600], [4, 900], [1, 700], [6, 800], [2, 800], [3, 700]];
+    const blink = [[1, 110], [3, 110], [5, 110], [0, 110], [4, 110], [6, 110], [2, 110], [0, 110]];
     const TWEEN = 550;
     let cur = POSES[0], seq = idle, i = 0, timer = 0, raf = 0;
     function glideTo(target, done) {
