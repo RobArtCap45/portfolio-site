@@ -1637,6 +1637,101 @@
   })(0);
 
   // ══════════════════════════════════════════════════════════════
+  // ABOUT PRINTS — the two prints take turns dissolving into periwinkle pixels and rebuilding as
+  // the next photo (same look as the contact headline). Clicking a print does it too.
+  // ══════════════════════════════════════════════════════════════
+  (function aboutPrints() {
+    const media = document.querySelector('.about-media');
+    if (!media) return;
+    const slots = [...media.querySelectorAll(':scope > img')];
+    if (slots.length < 2) return;
+    const PHOTOS = [
+      { src: 'about-camera.jpg',     pos: '50% 40%', alt: 'Robert Capron taking a photo, sitting in front of a wall of artwork' },
+      { src: 'about-witr.jpg',       pos: '50% 35%', alt: 'Robert Capron at the WITR radio studio desk' },
+      { src: 'about-crew.jpg',       pos: '35% 50%', alt: 'Robert Capron reaching toward the camera, with two friends behind him' },
+      { src: 'about-cap.jpg',        pos: '50% 30%', alt: 'Robert Capron smiling in a ball cap against a white backdrop' },
+      { src: 'about-photobooth.jpg', pos: '50% 40%', alt: 'Black-and-white photo booth strip of Robert Capron grinning' },
+      { src: 'about-banner.jpg',     pos: '50% 50%', alt: 'Robert Capron peeking out from under a paper banner covered in colorful shapes' },
+      { src: 'about-friend.jpg',     pos: '55% 50%', alt: 'Robert Capron and a friend taking a selfie outside on a sunny day' },
+      { src: 'about-hood.jpg',       pos: '50% 50%', alt: 'Robert Capron bundled up in a fur-lined hood against a pale sky' },
+    ];
+    // preload every photo as an Image so the dissolve can draw both the old and the new one
+    PHOTOS.forEach(p => { p.img = new Image(); p.img.src = p.src; });
+    const showing = [0, 1];       // PHOTOS index in each slot
+    let nextPhoto = 2, turn = 0, busy = false;
+    const SWIRL = '#6b8fff', PAPER_FILL = '#f4f3ef';
+    function set(slot, k) {
+      const p = PHOTOS[k];
+      slot.src = p.src; slot.alt = p.alt; slot.style.objectPosition = p.pos;
+    }
+    // one print drawn onto a canvas exactly as it looks: paper border, then the photo cover-fitted inside
+    function printCanvas(k, W, H, dpr) {
+      const c = document.createElement('canvas');
+      c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+      const x = c.getContext('2d');
+      x.scale(dpr, dpr);
+      x.fillStyle = PAPER_FILL; x.fillRect(0, 0, W, H);
+      const P = 8, iw = W - P * 2, ih = H - P * 2, p = PHOTOS[k], im = p.img;
+      if (im.complete && im.naturalWidth) {
+        const [px, py] = p.pos.split(' ').map(v => parseFloat(v) / 100);
+        const sc = Math.max(iw / im.naturalWidth, ih / im.naturalHeight), sw = iw / sc, sh = ih / sc;
+        x.drawImage(im, (im.naturalWidth - sw) * px, (im.naturalHeight - sh) * py, sw, sh, P, P, iw, ih);
+      }
+      return c;
+    }
+    function dissolveTo(si, k) {
+      if (busy) return;
+      busy = true;
+      const slot = slots[si], from = showing[si];
+      if (REDUCED) { set(slot, k); showing[si] = k; busy = false; return; }
+      const W = slot.offsetWidth, H = slot.offsetHeight, dpr = Math.min(2, devicePixelRatio || 1);
+      const CELL = Math.max(10, Math.round(W / 22));
+      const cols = Math.ceil(W / CELL), rows = Math.ceil(H / CELL);
+      const A = printCanvas(from, W, H, dpr), B = printCanvas(k, W, H, dpr);
+      const cv = document.createElement('canvas');
+      cv.className = 'print-fx';
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      cv.style.cssText = `left:${slot.offsetLeft}px;top:${slot.offsetTop}px;width:${W}px;height:${H}px;transform-origin:${getComputedStyle(slot).transformOrigin}`;
+      media.appendChild(cv);
+      const ctx = cv.getContext('2d');
+      ctx.scale(dpr, dpr); ctx.imageSmoothingEnabled = false;
+      const bias = Float32Array.from({ length: cols * rows }, (_, i) => Math.random() * 0.6 + 0.4 * (((i % cols) / cols + Math.floor(i / cols) / rows) / 2));
+      set(slot, k); showing[si] = k;       // the real <img> is already the new photo, hidden under the effect
+      slot.style.opacity = '0';
+      const t0 = performance.now(), DUR = 900, band = 0.1;
+      (function frame(now) {
+        const p = Math.min(1, (now - t0) / DUR), first = p < 0.5, q = first ? p * 2 : (p - 0.5) * 2;
+        cv.style.transform = getComputedStyle(slot).transform;       // follow the print's tilt (and hover spread)
+        ctx.clearRect(0, 0, W, H);
+        for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+          const t = bias[y * cols + x], sx = x * CELL, sy = y * CELL;
+          const flash = Math.abs(t - q) < band;
+          if (flash) { ctx.fillStyle = SWIRL; ctx.fillRect(sx, sy, CELL, CELL); continue; }
+          const showOld = first && t >= q, showNew = !first && t <= q;
+          if (showOld || showNew) ctx.drawImage(showOld ? A : B, sx * dpr, sy * dpr, CELL * dpr, CELL * dpr, sx, sy, CELL, CELL);
+        }
+        if (p < 1) requestAnimationFrame(frame);
+        else { cv.remove(); slot.style.opacity = ''; busy = false; }
+      })(t0);
+    }
+    function advance(si) {
+      let k = nextPhoto;
+      while (showing.includes(k)) k = (k + 1) % PHOTOS.length;   // never show the same photo twice
+      nextPhoto = (k + 1) % PHOTOS.length;
+      dissolveTo(si, k);
+    }
+    slots.forEach((slot, si) => { slot.style.cursor = 'pointer'; slot.addEventListener('click', () => advance(si)); });
+    if (REDUCED) return;
+    // slow, alternating rhythm; only while the section is on screen and the tab is visible
+    let visible = false;
+    new IntersectionObserver(es => { visible = es[0].isIntersecting; }, { threshold: 0.3 }).observe(media);
+    setInterval(() => {
+      if (!visible || document.hidden) return;
+      advance(turn % 2); turn++;
+    }, 3600);
+  })();
+
+  // ══════════════════════════════════════════════════════════════
   // FAVOURITES — the skull guy from the logo sits on the front of the About
   // photos; clicking him sends five favourite things flying out to land around
   // the prints like stickers (click again and they fly back).
