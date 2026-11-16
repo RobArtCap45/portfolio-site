@@ -21,11 +21,14 @@
   const pad3  = n => String(n).padStart(3, '0');
   const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
-  // ── LOGO — "smart animate" between the skull's three poses from the Figma file.
-  // Every shape is tweened (shadow side, eye position/size, jaw, colour) so the head
-  // turns and looks around smoothly; hovering switches to snappy frame-to-frame blinks.
-  // Copies of the skull elsewhere (the About sticker) join in through addLogoRig(svg) and
-  // move in sync; hovering any of them blinks them all.
+  // ── LOGO — "smart animate" between the skull's poses from the Figma file.
+  // Every shape is tweened (shadow side, eye position/size, jaw, colour) so the head turns
+  // smoothly. Each skull runs on its own:
+  //   · the top-left logo watches the cursor: its eyes track it, and the face follows where you
+  //     are on the screen (far right = yellow, low = green, otherwise blue). Leave the mouse
+  //     alone for a few seconds and it goes back to looking around by itself.
+  //   · the About sticker (added through addLogoRig) always looks around by itself.
+  //   · hovering either one makes that one go wonky: snappy frame-to-frame blinks.
   let addLogoRig = () => {};
   (function logo() {
     const el = document.getElementById('logo');
@@ -34,7 +37,6 @@
       panels: [...svg.querySelectorAll('.lg-panel')], eyes: [...svg.querySelectorAll('.lg-eye')],
       teeth: [...svg.querySelectorAll('.tooth')],
     });
-    const rigs = [rig(el)];
     // px/pw: shadow plate · py/ph: panel top + height (the white top bar fills the gap above) ·
     // col: panel colour · e: eye centres · r: eye radius · th: tooth height · jy: jaw top (272 = no jaw)
     const POSES = [
@@ -53,16 +55,16 @@
       // eyes on the other diagonal, low left / high right (periwinkle)
       { px: 260, pw: 127, col: [128, 135, 255], e: [[291, 192], [353, 160]], r: 11.5, th: 48, jy: 272 },
     ].map(p => ({ py: 141, ph: 76, ...p }));
-    function apply(p) {
+    const YELLOW = 0, BLUE_FACE = 1, GREEN = 2;
+    const EYE_HOME = [[291, 179], [346.5, 179]];   // middle of each eye panel
+    function applyTo({ plate, bar, jaw, panels, eyes, teeth }, p) {
       const fill = `rgb(${p.col.map(c => Math.round(c)).join(',')})`;
-      for (const { plate, bar, jaw, panels, eyes, teeth } of rigs) {
-        plate.setAttribute('x', p.px); plate.setAttribute('width', p.pw);
-        bar.setAttribute('height', p.py - 132);
-        panels.forEach(el => { el.setAttribute('fill', fill); el.setAttribute('y', p.py); el.setAttribute('height', p.ph); });
-        eyes.forEach((el, k) => { el.setAttribute('cx', p.e[k][0]); el.setAttribute('cy', p.e[k][1]); el.setAttribute('r', p.r); });
-        teeth.forEach(el => el.setAttribute('height', p.th));
-        jaw.setAttribute('y', p.jy); jaw.setAttribute('height', 272 - p.jy);
-      }
+      plate.setAttribute('x', p.px); plate.setAttribute('width', p.pw);
+      bar.setAttribute('height', p.py - 132);
+      panels.forEach(el => { el.setAttribute('fill', fill); el.setAttribute('y', p.py); el.setAttribute('height', p.ph); });
+      eyes.forEach((el, k) => { el.setAttribute('cx', p.e[k][0]); el.setAttribute('cy', p.e[k][1]); el.setAttribute('r', p.r); });
+      teeth.forEach(el => el.setAttribute('height', p.th));
+      jaw.setAttribute('y', p.jy); jaw.setAttribute('height', 272 - p.jy);
     }
     const mix = (A, B, t) => ({
       px: lerp(A.px, B.px, t), pw: lerp(A.pw, B.pw, t), py: lerp(A.py, B.py, t), ph: lerp(A.ph, B.ph, t),
@@ -71,475 +73,80 @@
       r: lerp(A.r, B.r, t), th: lerp(A.th, B.th, t), jy: lerp(A.jy, B.jy, t),
     });
     const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    if (REDUCED) { addLogoRig = svg => { rigs.push(rig(svg)); apply(POSES[0]); }; apply(POSES[0]); return; }
-
     // [pose, hold ms] — idle glides between these; hover snaps through `blink`
     const idle  = [[0, 1900], [1, 1100], [3, 900], [0, 1300], [2, 900], [5, 800], [0, 1600], [4, 900], [1, 700], [6, 800], [2, 800], [3, 700]];
     const blink = [[1, 110], [3, 110], [5, 110], [0, 110], [4, 110], [6, 110], [2, 110], [0, 110]];
-    const TWEEN = 550;
-    let cur = POSES[0], seq = idle, i = 0, timer = 0, raf = 0;
-    function glideTo(target, done) {
-      cancelAnimationFrame(raf);
-      const from = cur, t0 = performance.now();
-      (function step(now) {
-        const t = Math.min((now - t0) / TWEEN, 1);
-        cur = mix(from, target, ease(t)); apply(cur);
-        if (t < 1) raf = requestAnimationFrame(step); else done();
-      })(t0);
+    const TWEEN = 550, FOLLOW_REST = 4500;   // ms without the mouse moving before the logo looks around by itself again
+
+    // one skull, animated on its own. svg: its markup · host: what you hover · follow: watch the cursor
+    function skull(svg, host, follow) {
+      const R = rig(svg);
+      const apply = p => applyTo(R, p);
+      let cur = POSES[0];
+      apply(cur);
+      if (REDUCED) return;
+      let seq = idle, i = 0, timer = 0, raf = 0, mode = 'idle';
+      function glideTo(target, done) {
+        cancelAnimationFrame(raf);
+        const from = cur, t0 = performance.now();
+        (function step(now) {
+          const t = Math.min((now - t0) / TWEEN, 1);
+          cur = mix(from, target, ease(t)); apply(cur);
+          if (t < 1) raf = requestAnimationFrame(step); else done();
+        })(t0);
+      }
+      function next() {
+        const [pose, hold] = seq[i % seq.length]; i++;
+        if (seq === blink) { cancelAnimationFrame(raf); cur = POSES[pose]; apply(cur); timer = setTimeout(next, hold); }
+        else glideTo(POSES[pose], () => { timer = setTimeout(next, hold); });
+      }
+      const swap = s => { clearTimeout(timer); cancelAnimationFrame(raf); seq = s; i = 0; next(); };
+      host.addEventListener('pointerenter', () => { mode = 'wonky'; swap(blink); });
+      host.addEventListener('pointerleave', () => { mode = 'idle'; swap(idle); });
+      timer = setTimeout(next, 1200);
+      if (!follow) return;
+
+      // follow: the face is picked by where the cursor is on the screen, the eyes by where it is
+      // from the logo. Both ease every frame, so crossing a zone turns the head instead of snapping.
+      const ptr = { x: 0, y: 0, at: 0 };
+      function faceFor() {
+        const right = smooth(0.5, 0.82, ptr.x / innerWidth), down = smooth(0.45, 0.8, ptr.y / innerHeight);
+        if (right < 0.5 && down < 0.5) return BLUE_FACE;
+        return right > down ? YELLOW : GREEN;
+      }
+      function followStep() {
+        if (mode !== 'follow') return;
+        if (performance.now() - ptr.at > FOLLOW_REST) { mode = 'idle'; swap(idle); return; }   // back to looking around
+        const face = POSES[faceFor()];
+        const r = svg.getBoundingClientRect();
+        const dx = ptr.x - (r.left + r.width / 2), dy = ptr.y - (r.top + r.height / 2);
+        const len = Math.hypot(dx, dy) || 1, reach = Math.min(1, len / 220);
+        const look = EYE_HOME.map(([hx, hy]) => [hx + dx / len * 24.5 * reach, hy + dy / len * 19 * reach]);
+        cur = mix(cur, { ...face, e: look }, 0.14);
+        apply(cur);
+        raf = requestAnimationFrame(followStep);
+      }
+      addEventListener('pointermove', e => {
+        if (e.pointerType === 'touch') return;
+        ptr.x = e.clientX; ptr.y = e.clientY; ptr.at = performance.now();
+        if (mode !== 'idle') return;           // already following, or being hovered
+        mode = 'follow';
+        clearTimeout(timer); cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(followStep);
+      }, { passive: true });
+      // the cursor has left the page (or the window lost focus): look around by itself again, straight away
+      const rest = () => { if (mode === 'follow') { mode = 'idle'; swap(idle); } };
+      document.documentElement.addEventListener('pointerleave', rest);
+      document.addEventListener('mouseout', e => { if (!e.relatedTarget) rest(); });
+      addEventListener('blur', rest);
     }
-    function next() {
-      const [pose, hold] = seq[i % seq.length]; i++;
-      if (seq === blink) { cancelAnimationFrame(raf); cur = POSES[pose]; apply(cur); timer = setTimeout(next, hold); }
-      else glideTo(POSES[pose], () => { timer = setTimeout(next, hold); });
-    }
-    const swap = s => { clearTimeout(timer); cancelAnimationFrame(raf); seq = s; i = 0; next(); };
-    const hoverable = node => {
-      node.addEventListener('pointerenter', () => swap(blink));
-      node.addEventListener('pointerleave', () => swap(idle));
-    };
-    hoverable(el);
-    addLogoRig = (svg, host) => { rigs.push(rig(svg)); apply(cur); hoverable(host || svg); };
-    apply(cur);
-    timer = setTimeout(next, 1200);
+
+    skull(el, el, true);
+    addLogoRig = (svg, host) => skull(svg, host || svg, false);
   })();
 
   // ── PROJECTS ─────────────────────────────────────────────────
-  const PROJECTS = [
-    {
-      title: 'Dimensional Etch', cat: 'Interactive — Physical computing', img: 'etch/controller-angled.jpg',
-      sections: [
-        {
-          title: 'Overview', layout: 'statement',
-          body: ["A drawing toy played with three knobs. You climb a towering frame of woven square tubes, your line fills them with liquid in your colour, and everyone in the room plays an instrument in one orchestra."],
-        },
-        {
-          title: 'Brief',
-          items: [
-            ['Course', 'Interactive 4 (NMDE 404), RIT — Prof. Mike Minerva'],
-            ['When', 'Fall 2026, presented at critique on October 5'],
-            ['Brief', 'Start from a 16px square that moves with the arrow keys. Grow it into a dimensional etch-a-sketch with an orbit mode, then build a real controller: an Arduino, three encoders and a button.'],
-            ['Tools', 'HTML, CSS and JavaScript (Canvas, WebGL, Web Audio), Arduino Leonardo, ESP32, Python, AI-assisted coding'],
-          ],
-          images: [{ video: 'etch/sketch-on-screen.mp4', poster: 'etch/sketch-on-screen.jpg', caption: 'The controller driving the sketch on the laptop.' }],
-        },
-        {
-          title: 'From a Square to a Shape',
-          body: [
-            "It started with the class prompt: a square that moves with the arrow keys. That became a wire sphere, then a cube, then six square frames woven through each other, with 24 cells along every edge for the pen to travel.",
-            "Along the way I built a version called Controlled Chaos, where the more you drew, the more the clean wireframe broke apart into a collage of chrome, stickers and arrows. It was fun, but the drawing got lost in it, so I went back to clean wireframes and put the energy into the liquid and the sound.",
-          ],
-          cols: 2,
-          images: [
-            { src: 'etch/process-1-etch2.jpg', caption: 'A wire sphere, with the line drawn on its surface.' },
-            { src: 'etch/process-2-tubes.jpg', caption: 'A cube inside a cube.' },
-            { src: 'etch/process-3-chaos-calm.jpg', caption: 'Six woven frames, early in Controlled Chaos.' },
-            { src: 'etch/process-4-chaos-full.jpg', caption: 'Controlled Chaos at full entropy. I cut this direction.' },
-          ],
-        },
-        {
-          title: 'Drawing on the Frame',
-          body: ["The pen always stays on the structure, so the drawing reads as part of the shape. You go around a frame's square as many times as you like, and press a knob to jump to the closest line on another frame. Each person draws with a brush."],
-          items: [
-            ['Knob 1', 'Along the tube. Press to jump to another line; hold for the next brush.'],
-            ['Knob 2', 'Around the tube. Press to orbit the camera; hold to clear.'],
-            ['Knob 3', 'Out from the tube. Press to confirm.'],
-            ['Switch', 'Opens the menu: change colour, new instrument, knob speed.'],
-          ],
-          cols: 3,
-          images: [
-            { src: 'etch/brush-ribbon.jpg', caption: 'Ribbon' },
-            { src: 'etch/brush-blueprint.jpg', caption: 'Blueprint' },
-            { src: 'etch/brush-pixel.jpg', caption: 'Pixel' },
-            { src: 'etch/brush-notation.jpg', caption: 'Notation' },
-            { src: 'etch/brush-wave.jpg', caption: 'Wave: a waveform of the sound that was playing as you drew.' },
-          ],
-        },
-        {
-          title: 'Liquid',
-          body: [
-            "Drawing pours liquid into the tube you're on, in the colour you chose when you came in. It runs downhill inside each frame, fills it box by box, and mixes with everyone else's colours by volume. It's rendered as metaballs on the GPU, so it reads like one glossy liquid rather than dots.",
-          ],
-        },
-        {
-          title: 'An Orchestra',
-          body: [
-            "Every person is dealt an instrument, like a seat in an orchestra, from whichever section the room needs most: foundation, harmony, melody or colour. Climbing higher on the shape plays higher notes.",
-            "Three rules keep 20 or more people sounding good together. Everyone plays inside one slow chord progression, so no note clashes. Everyone lands on a shared beat. And a conductor lets only a few notes through per beat, so the room gets sparser and softer as it fills. Your own instrument stays just a little louder than everyone else's.",
-          ],
-          items: [
-            ['Harmony', 'D major: Dmaj9, Bm11, Gmaj9, A6sus, a chord every two bars'],
-            ['Pulse', '76 bpm. Other people on eighth notes, you on sixteenths'],
-            ['Sections', 'Double bass and timpani to glockenspiel and music box, 24 instruments in all'],
-          ],
-        },
-        {
-          title: 'Together',
-          body: ["The etch is built to the class's multiplayer spec, so the whole class can draw on one shape at once. Each person picks a liquid colour on the way in, carries a name tag, and is heard in their own instrument. With 20 people in the room it stays smooth and readable."],
-          images: [
-            { src: 'etch/final-class.jpg', caption: 'Twelve people drawing on the frame at once, every brush and colour mixing.' },
-            { video: 'etch/lab-session-drawing.mp4', poster: 'etch/lab-session-drawing.jpg', caption: 'Drawing in the lab.' },
-          ],
-        },
-        {
-          title: 'The Controller',
-          body: ["An Arduino Leonardo inside a Doritos and Lay's box. Three rotary encoders and a toggle switch on top, and the wiring on a breadboard inside, all held together with cardboard and tape."],
-          items: [
-            ['Board', 'Arduino Leonardo'],
-            ['Inputs', 'Three KY-040 rotary encoders and a toggle switch'],
-            ['Modes', 'Drives the etch through a small Python bridge, or works as a USB keyboard on the class site'],
-            ['Wiring', 'Copes with any pins, button type or knob direction; mistakes are caught when it compiles'],
-          ],
-          cols: 2,
-          images: [
-            { src: 'etch/controller-angled.jpg', caption: 'The controller: three round screens, three knobs and a switch.' },
-            { src: 'etch/controller-inside.jpg', caption: 'Opened up: the Leonardo, encoders and breadboard.' },
-            { video: 'etch/handheld-drawing.mp4', poster: 'etch/handheld-drawing.jpg', caption: 'Drawing with the controller in hand.' },
-            { src: 'etch/controller-laptop.jpg', caption: 'Choosing a liquid colour with the knobs.' },
-          ],
-        },
-        {
-          title: 'Round Screens',
-          body: ["An ESP32 drives three 1.28-inch round displays on the controller, so you can follow your drawing without looking up. It draws everything itself from small updates the page sends, about fifteen times a second."],
-          items: [
-            ['Screen 1', 'The whole shape from above, with everyone as a dot'],
-            ['Screen 2', 'A pen camera, looking up the tube you are on'],
-            ['Screen 3', 'Your brush, the three knobs as dials, and a glass of your liquid that fills as the shape does'],
-          ],
-          images: [
-            { video: 'etch/round-displays-closeup.mp4', poster: 'etch/round-displays-closeup.jpg', caption: 'The three round screens following the drawing.' },
-            { src: 'etch/wiring-screens.png', caption: 'Wiring: the screens share four signal wires; each has its own CS pin.' },
-          ],
-        },
-        {
-          title: 'Final', layout: 'media-first',
-          body: ["The finished etch, drawn live with the controller."],
-          images: [
-            { video: 'etch/walkthrough.mp4', poster: 'etch/walkthrough.jpg', caption: 'A full drawing session on critique day, sped up three times.' },
-            { video: 'etch/class-drawing.mp4', poster: 'etch/class-drawing.jpg', caption: 'A simulated class of twenty drawing in Notation, with the liquid filling the frames.' },
-          ],
-        },
-        {
-          title: 'Reflection',
-          body: [
-            "This project taught me how far a simple prompt can go when I keep asking what the next layer should be: from a moving square to a shared space where a class draws, pours and plays music together.",
-            "It was also my first time taking a project from code to wires to cardboard. Debugging went both ways, from a screen that stayed blank because of one loose wire to knobs that turned the wrong way because of how they were read. Building the controller so it works with anyone's wiring taught me to design for the people who would use it, not just for my own setup.",
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Pizza Wizard', cat: 'UX/UI — Ordering kiosk', img: 'pw-logo.png', fit: 'contain',
-      bg: 'pw-bg.png',   // brand pattern behind the logo in the case study
-      // Case study, top to bottom. Each section: title, body (paragraphs), optional
-      // items (label + text rows), optional images. Images are either a file —
-      // { src: 'file.png', caption: '…' } — or a placeholder box — { ph: 'what goes here' }.
-      // Add `ratio: '16/9'` to a placeholder to change its shape; `cols: 2` puts a section's images side by side.
-      sections: [
-        {
-          title: 'The Brief',
-          body: ["Design a self-serve ordering kiosk for a brand."],
-          images: [{ src: 'pizza-wizard/brief-splash.jpg?v=2', caption: 'The kiosk’s splash screen: “Mmmm Pizza!”' }],
-        },
-        {
-          title: 'Brainstorm', layout: 'split',
-          body: ["I started with research at a real, installed kiosk, walking the entire order-to-checkout flow and scoring it against Nielsen's 10 usability heuristics to see what held up and what didn't. That audit set the baseline before a single screen was drawn: what actually makes a touchscreen ordering flow fast, versus what just looks fast."],
-          images: [{ src: 'pizza-wizard/brainstorm-score-scale.png', caption: 'Each of Nielsen’s 10 heuristics scored 0 to 4.' }],
-        },
-        {
-          title: 'Timeline',
-          body: ["A four-month project, with a new step each week, from competitive research through to animated compositions."],
-          items: [
-            ['01', 'Research'],
-            ['02', 'Wireframes and work flows'],
-            ['03', 'Style guide'],
-            ['04', 'Grid layout'],
-            ['05', 'Compositions'],
-          ],
-        },
-        {
-          title: 'Scope',
-          body: ["Everything needed to make this kiosk work."],
-          items: [
-            ['Hardware', "I simulated what the kiosk would look like and where it would be placed, based on customer flow."],
-            ['Content', "I used Pizza Wizard's current menu and items, and added restrictions and limits on orders."],
-            ['Functionality', "I researched the user flow, including accessibility, item removal, and error prevention."],
-          ],
-          cols: 2,
-          images: [
-            { src: 'pizza-wizard/scope-console-guide.jpg', caption: 'Console guide: a 22" screen on the counter, next to the cashier and pizza display.' },
-            { src: 'pizza-wizard/scope-3d-render.jpg', caption: '3D render of the kiosks in the restaurant.' },
-          ],
-        },
-        {
-          title: 'Workflow',
-          body: ["I mapped out the user's journey through the kiosk."],
-          images: [
-            { src: 'pizza-wizard/workflow-main.png', caption: 'Main flow.' },
-            { src: 'pizza-wizard/workflow-checkout.png', caption: 'Checkout flow.' },
-          ],
-        },
-        {
-          title: 'Mockups',
-          items: [
-            ['Physical', "I modeled every element to scale to get a better sense of sizing."],
-            ['Virtual', "I made a virtual mockup to see how the kiosk might look in the restaurant."],
-          ],
-          cols: 2,
-          images: [
-            { src: 'pizza-wizard/mockup-physical.jpg', caption: 'Physical mockup: type, buttons and keypad printed to scale.' },
-            { src: 'pizza-wizard/mockup-3d-render.jpg', caption: 'Virtual mockup in the restaurant.' },
-          ],
-        },
-        {
-          title: 'Wireframes',
-          body: ["I laid out the user flow and the features users can interact with."],
-          images: [
-            { src: 'pizza-wizard/wireframe-main-menu.png', caption: 'Main menu wireframe, annotated.' },
-            { src: 'pizza-wizard/wireframe-error-prevention.png', caption: 'Error prevention: confirming before an item is removed from the bag.' },
-          ],
-        },
-        {
-          title: 'Style Guide',
-          body: ["A guide to how the kiosk is styled, built on a design system with annotations for every detail."],
-          cols: 2,
-          images: [
-            { src: 'pizza-wizard/style-iconography.png', caption: 'Iconography' },
-            { src: 'pizza-wizard/style-color.png', caption: 'Color palette' },
-            { src: 'pizza-wizard/style-typography.png', caption: 'Typography' },
-            { src: 'pizza-wizard/style-buttons.png', caption: 'Buttons' },
-          ],
-        },
-        {
-          title: 'Final Design',
-          cols: 2,
-          images: [
-            { src: 'pizza-wizard/final-loading.png', caption: 'Loading: “Casting up some pizza.”' },
-            { src: 'pw-menu.png', caption: 'Menu' },
-            { src: 'pw-item-select.png', caption: 'Item select, with required choices' },
-            { src: 'pizza-wizard/final-order-complete.png', caption: 'Order complete: receipt options' },
-          ],
-        },
-        {
-          title: 'Reflection',
-          body: [
-            "Effective UX is built on comprehensive systems that balance creativity, accessibility, and real-world constraints.",
-            "As a designer, this project taught me how to adapt. It pushed me to think critically about how people interact with digital kiosks in public spaces and retail settings, and about the limitations different users bring with them. I explored everything from systems thinking and UX workflow logic to visual hierarchy, accessibility, and motion as a storytelling tool.",
-            "This project challenged me to design a kiosk experience that was imaginative, functional, and grounded in real-world constraints. Along the way, I deepened my understanding of how to shape user flows, design with intent, and build systems that feel cohesive from start to finish. Through every stage of research, ideation, documentation, and refinement, I kept the end user in mind. In the end, it was each step of the process, not just the polished outcome, that taught me the most.",
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Mofuda', cat: 'Interactive — Virtual pet', img: 'mofuda.webp', fit: 'contain',
-      sections: [
-        {
-          title: 'Overview', layout: 'statement',
-          body: ["Mofuda is a Tamagotchi-style virtual pet: a bear with the patience of a Daruma, steeped in Buddhist teachings and wisdom."],
-        },
-        {
-          title: 'Brief',
-          items: [
-            ['Course', 'Interactive Design II (NMDE 203), RIT'],
-            ['When', 'Spring 2023'],
-            ['Tools', 'Figma, Spline, After Effects'],
-          ],
-          images: [{ src: 'mofuda/cover.jpg', caption: 'Mofuda, at the foot of the mountain.' }],
-        },
-        {
-          title: 'Backstory',
-          body: [
-            "In a monastery beneath a Fuji-like mountain, monks once fused ancient wisdom with modern code. Their greatest creation was a Tamagotchi: not a toy, but a vessel. Inside it they placed the spirit of a bear and the patience of a Daruma. His name was Mofuda.",
-            "Years later, a curious sophomore from RIT found the Tamagotchi in a Kyoto antique shop. “It helps you understand yourself,” the shopkeeper said. They meditated, shared tea and sang karaoke. Before Robert left Japan, Mofuda disappeared, leaving one final message: “Goodbye. Love yourself. And take the path no one’s walking.”",
-          ],
-          images: [{ src: 'mofuda/process-comic.jpg', caption: 'The backstory as a comic.' }],
-          layout: 'split',
-        },
-        {
-          title: 'Case and Character',
-          items: [
-            ['Case', '4.87 × 2.31'],
-            ['Screen', '250 × 200'],
-            ['Controls', 'Drag left and right, confirm button'],
-            ['Inspiration', 'Fidget Cube, traditional Tamagotchi, iPod Nano'],
-          ],
-          images: [{ src: 'mofuda/case.jpg', caption: 'The carved-wood case and its button states.' }],
-        },
-        {
-          title: 'Intro Screens',
-          body: ["An intro video inspired by the Game Boy Advance start-up plays first. A prompt asks you to hit the main button, then Mofuda rocks back and forth to show he’s alive. His health drops by 5 every second."],
-          images: [{ src: 'mofuda/intro.jpg', caption: 'Intro video, start prompt, idle.' }],
-        },
-        {
-          title: 'Loading Screens',
-          body: [
-            "Loading screens are the transitions between sections, and each one carries a piece of Mofuda’s wisdom. Each is coloured for its stage; karaoke got the funky colours. Some of the wisdom is about design, because Mofuda and Robert learned from each other.",
-            "One loading screen hides a secret: press the main button and you skip to a secret level.",
-          ],
-          images: [{ src: 'mofuda/loading.jpg', caption: 'Four loading screens, four pieces of wisdom.' }],
-        },
-        {
-          title: 'Menu',
-          body: ["The menu sends Mofuda to drink tea (teacup), sing karaoke (music note), meditate (lotus flower) or go back to idle (house). I know the drag-to-select controls hinder accessibility, and I’m aware of that problem."],
-          images: [{ src: 'mofuda/menu.jpg', caption: 'Menu assets over the meadow.' }],
-          layout: 'split',
-        },
-        {
-          title: 'Play Screens',
-          items: [
-            ['Meditate', '+5 health per second.'],
-            ['Karaoke', '+1 health per second.'],
-            ['Tea', '+5 health for each sip; keep feeding him tea.'],
-            ['Secret', 'A little too much tea and a bad trip. You get here by pressing the button on a loading screen: karma for anyone who mashes it to make loading go faster.'],
-          ],
-          body: ["Most people’s activities took health away, but when you do something you like, you feel better, not worse. Mofuda can also go past 100, because you’re not limited by the bounds of 100. Mofuda taught me that."],
-          images: [{ src: 'mofuda/play.jpg', caption: 'Meditation, karaoke, tea, and the secret stage.' }],
-        },
-        {
-          title: 'Health and Death', cols: 2,
-          body: ["Health starts at 100 in green. Below 70 the bar turns orange and the icon changes; below 30 it turns red, and below 15 the icon goes to the dead look. Under 5, the death animation plays: Mofuda ascends into his final form, says goodbye and leaves you with some wisdom."],
-          images: [
-            { src: 'mofuda/health-meters.png', caption: 'Health progression.' },
-            { src: 'mofuda/death.jpg', caption: 'His final form.' },
-          ],
-        },
-        {
-          title: 'Site Map and User Flow', cols: 2,
-          images: [
-            { src: 'mofuda/sitemap.png', caption: 'Site map.' },
-            { src: 'mofuda/userflow.png', caption: 'User flow.' },
-          ],
-        },
-        {
-          title: 'Process',
-          body: ["I modelled Mofuda in Spline, explored him as a Daruma, in pixel art and as an illustration, then built the prototype in Figma."],
-          images: [
-            { src: 'mofuda/process-renders.jpg', caption: 'Character explorations.' },
-            { src: 'mofuda/process-prototypes.jpg', caption: 'Early screens and case studies.' },
-            { src: 'mofuda/process-assets.jpg', caption: 'Health meters, icons and menu assets.' },
-          ],
-        },
-        {
-          title: 'Style', layout: 'split',
-          body: ["Greens for life and the button, warm browns for the wood case. Poppins for reading, Pixelade for the screen."],
-          images: [{ src: 'mofuda/style.png', caption: 'Palette and type.' }],
-        },
-        {
-          title: 'Reflection',
-          body: [
-            "I learned so much Figma and Spline, and a little more After Effects. I loved creating the character and bringing him to life.",
-            "My biggest challenge was components. I couldn’t figure them out, so I did everything by hand, and learned the hard way that doing it by hand costs you consistency between assets. I made the project harder than it had to be, and I hope to come back and rebuild it properly.",
-            "Mofuda is the embodiment of me reframing my situation at the time. He would say to take a step back and enjoy where you are, not where you’re going. Stay in the present; it is a gift. I learned how to model a character, how to use interactions, and how to reframe any situation.",
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Digital ID', cat: 'UX/UI — Mobile app', img: 'digital-id.png', fit: 'contain',
-      sections: [
-        {
-          title: 'Overview', layout: 'statement',
-          body: ["A digital driver's licence for the phone."],
-        },
-        {
-          title: 'Research',
-          body: [{ ph: 'Research text: who uses it, where, and what a physical licence gets wrong.' }],
-          images: [{ ph: 'Research / existing licences', ratio: '16/9' }],
-        },
-        {
-          title: 'Hierarchy', layout: 'split',
-          body: ["The holder's photo and name lead the screen, with licence number, class, restrictions, and endorsements grouped underneath, then personal details and signature."],
-          images: [{ ph: 'ID screen', ratio: '9/16' }],
-        },
-        {
-          title: 'Three Tabs', cols: 3,
-          items: [
-            ['ID', "The licence itself."],
-            ['Barcode', "A scannable barcode."],
-            ['Age check', "Age verification."],
-          ],
-          images: [{ ph: 'ID tab', ratio: '9/16' }, { ph: 'Barcode tab', ratio: '9/16' }, { ph: 'Age verification tab', ratio: '9/16' }],
-        },
-        {
-          title: 'Final Design', layout: 'media-first',
-          images: [{ ph: 'Final screens', ratio: '16/9' }],
-          body: [{ ph: 'Final design text.' }],
-        },
-        {
-          title: 'Reflection',
-          body: [{ ph: 'Reflection text.' }],
-        },
-      ],
-    },
-    {
-      title: 'Bacteria Per Pixel', cat: 'Graphic — Image', img: 'bacteria-per-pixel.webp',
-      sections: [
-        {
-          title: 'Overview', layout: 'statement',
-          body: ["Bacteria Per Pixel is a graphic piece built from bacteria."],
-        },
-        {
-          title: 'The Piece', layout: 'media-first',
-          images: [{ src: 'bacteria-per-pixel.webp', caption: 'Bacteria Per Pixel, full image.' }],
-          body: [{ ph: 'Concept text: where the idea came from.' }],
-        },
-        {
-          title: 'Form', layout: 'split',
-          body: ["The image is broken into flat acid-green, white, and black shapes."],
-          images: [{ ph: 'Colour / shape breakdown', ratio: '1/1' }],
-        },
-        {
-          title: 'Type as Texture', cols: 2,
-          body: ["Lines from a bacterial strain list, species names and culture-collection numbers, are set through it as texture."],
-          images: [{ ph: 'Detail: strain list type', ratio: '1/1' }, { ph: 'Detail: culture numbers', ratio: '1/1' }],
-        },
-        {
-          title: 'Process',
-          body: [{ ph: 'Process text: tools, iterations, print or screen output.' }],
-          images: [{ ph: 'Process / iterations', ratio: '16/9' }],
-        },
-      ],
-    },
-    {
-      title: 'Hanafuda Cards', cat: 'Graphic — Card deck', img: 'Darumaoslo.png', fit: 'contain',
-      sections: [
-        {
-          title: 'Overview', layout: 'statement',
-          body: ["A hanafuda-inspired reimagining of the standard 52-card deck."],
-        },
-        {
-          title: 'Suits', layout: 'media-first', cols: 3,
-          images: [{ ph: 'Cherry blossom suit', ratio: '5/7' }, { ph: 'Plum blossom suit', ratio: '5/7' }, { ph: 'Fern suit', ratio: '5/7' }],
-          body: ["Each suit is re-skinned around a Japanese floral motif (cherry blossom, plum blossom, fern) in place of the usual clubs and spades."],
-        },
-        {
-          title: 'Face Cards', layout: 'split',
-          body: ["Every face card pairs two daruma dolls instead of a royal portrait."],
-          images: [{ ph: 'Daruma face card', ratio: '5/7' }],
-        },
-        {
-          title: 'Bilingual Ranks',
-          body: ["Rank markers run bilingual, Western digits alongside kanji, so the whole deck stays legible while reading as unmistakably hanafuda."],
-          images: [{ ph: 'Rank marker detail', ratio: '16/9' }],
-        },
-        {
-          title: 'The Set',
-          items: [
-            ['Cards', "Full 54-card set."],
-            ['Illustration', "Suits, face cards, and daruma."],
-            ['System', "Suit and color system."],
-            ['Print', "Print-ready layout."],
-          ],
-          images: [{ ph: 'Full deck spread', ratio: '16/9' }],
-        },
-        {
-          title: 'In Progress',
-          body: ["The remaining suits and the box design are in progress."],
-          images: [{ ph: 'Box design (coming soon)', ratio: '16/9' }],
-        },
-      ],
-      tag: 'WIP: remaining suits + box design in progress',
-    },
-  ];
+  const PROJECTS = window.PROJECTS;   // projects.js
 
   // social links without an address yet: don't jump to the top when clicked
   document.querySelectorAll('a[data-soon]').forEach(a => a.addEventListener('click', e => {
@@ -1233,138 +840,13 @@
     tagEl.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 14}px)`;
   }, { passive: true });
 
-  // ── CASE STUDY ───────────────────────────────────────────────
-  const caseEl = document.getElementById('case');
-  const $ = id => document.getElementById(id);
-  let lastFocus = null;
-
-  const make = (tag, cls, text) => {
-    const n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text != null) n.textContent = text;
-    return n;
-  };
-  // a video plays (muted, looping) only while it's on screen, so a long case study doesn't stream everything at once
-  const vidWatch = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
-    if (e.isIntersecting) e.target.play().catch(() => {}); else e.target.pause();
-  }), { threshold: 0.25 }) : null;
-  // an image entry: 'file.png', { src, caption }, a video { video, poster, caption }, or a placeholder { ph, ratio }
-  function figure(im, title) {
-    const o = typeof im === 'string' ? { src: im } : im;
-    const fig = make('figure', 'case-fig');
-    if (o.ph) {
-      const box = make('div', 'case-ph micro');
-      box.append(make('span', null, 'Image'), make('span', null, o.ph));
-      box.style.aspectRatio = o.ratio || '4/3';
-      fig.appendChild(box);
-    } else if (o.video) {
-      const v = make('video');
-      v.src = o.video; if (o.poster) v.poster = o.poster;
-      v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'none';
-      v.setAttribute('aria-label', o.caption || `${title} video`);
-      if (vidWatch) vidWatch.observe(v); else v.autoplay = true;
-      fig.appendChild(v);
-    } else {
-      const img = make('img');
-      img.src = o.src; img.alt = o.caption || `${title} screen`; img.loading = 'lazy';
-      fig.appendChild(img);
-    }
-    if (o.caption) fig.appendChild(make('figcaption', null, o.caption));
-    return fig;
-  }
-  // a body entry: a paragraph string, or a placeholder { ph }
-  const para = t => typeof t === 'string' ? make('p', null, t) : make('p', 'case-ph-text', t.ph);
-
-  let current = 0;
-  // centre the circle on project i's poster, without animating the move
-  function setOrigin(i) {
-    const r = cards[i].querySelector('.card-poster').getBoundingClientRect();
-    caseEl.style.transition = 'none';
-    caseEl.style.setProperty('--cx', `${r.left + r.width / 2}px`);
-    caseEl.style.setProperty('--cy', `${r.top + r.height / 2}px`);
-    caseEl.getBoundingClientRect();   // commit the new centre before the transition comes back
-    caseEl.style.transition = '';
-  }
-
-  function openCase(i) {
-    current = i;
-    const p = PROJECTS[i];
-    // "next project" swaps content in place — keep focus returning to the original card
-    if (!caseEl.classList.contains('open')) lastFocus = document.activeElement;
-    // the circle grows out of the clicked poster (not slides in from the last one)
-    if (!caseEl.classList.contains('open')) setOrigin(i);
-    $('case-num').textContent = pad3(i + 1);
-    $('case-cat').textContent = p.cat;
-    $('case-title').textContent = p.title;
-    $('case-cover').src = p.img;
-    $('case-cover').alt = p.title;
-    caseEl.querySelector('.case-media').style.backgroundImage = p.bg ? `url("${p.bg}")` : '';
-    const tag = p.tag || '';
-    $('case-tag').textContent = tag;
-    $('case-tag').style.display = tag ? '' : 'none';
-    const desc = $('case-desc');
-    desc.replaceChildren();
-    [].concat(p.desc || []).forEach(t => desc.appendChild(para(t)));
-    const secs = p.sections || [];
-    // section layouts: default (text, then images), 'statement' (large lead text),
-    // 'split' (text beside the images), 'media-first' (images above the text)
-    secs.forEach((s, k) => {
-      const sec = make('section', `case-sec${s.layout ? ` case-sec--${s.layout}` : ''}`);
-      const bar = make('div', 'case-sec-bar micro');
-      bar.append(make('span', 'num', String(k + 1).padStart(2, '0')), make('span', 'num muted', `/ ${String(secs.length).padStart(2, '0')}`));
-      const text = make('div', 'case-text');
-      text.appendChild(make('h3', null, s.title));
-      [].concat(s.body || []).forEach(t => text.appendChild(para(t)));
-      if (s.items) {
-        const dl = make('dl', 'case-items');
-        s.items.forEach(([k2, v]) => {
-          const row = make('div');
-          row.append(make('dt', 'micro', k2), make('dd', null, v));
-          dl.appendChild(row);
-        });
-        text.appendChild(dl);
-      }
-      let figs = null;
-      if (s.images && s.images.length) {
-        figs = make('div', 'case-figs');
-        figs.style.setProperty('--n', s.cols || 1);
-        s.images.forEach(im => figs.appendChild(figure(im, p.title)));
-      }
-      sec.appendChild(bar);
-      if (s.layout === 'split' && figs) {
-        const row = make('div', 'case-split');
-        row.append(text, figs);
-        sec.appendChild(row);
-      } else if (s.layout === 'media-first' && figs) sec.append(figs, text);
-      else { sec.appendChild(text); if (figs) sec.appendChild(figs); }
-      desc.appendChild(sec);
-    });
-    const gal = $('case-gallery');
-    gal.replaceChildren(...(p.images || []).map(im => figure(im, p.title)));
-    const n = (i + 1) % PROJECTS.length;
-    $('case-next-num').textContent = pad3(n + 1);
-    $('case-next-title').textContent = PROJECTS[n].title;
-    $('case-next').onclick = () => openCase(n);
-    caseEl.scrollTop = 0;
-    caseEl.setAttribute('aria-hidden', 'false');
-    caseEl.classList.remove('closing');
-    caseEl.classList.add('open');
-    document.body.classList.add('case-open');
-    tagEl.classList.remove('on');
-    $('case-close').focus({ preventScroll: true });
-  }
-  function closeCase() {
-    if (!caseEl.classList.contains('open')) return;
-    setOrigin(current);   // shrink back into the poster of the project being viewed
-    caseEl.classList.add('closing');
-    caseEl.classList.remove('open');
-    caseEl.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('case-open');
-    setTimeout(() => caseEl.classList.remove('closing'), REDUCED ? 0 : 750);
-    if (lastFocus) lastFocus.focus({ preventScroll: true });
-  }
-  $('case-close').addEventListener('click', closeCase);
-  addEventListener('keydown', e => { if (e.key === 'Escape') closeCase(); });
+  // ── CASE STUDY — built by case.js; the circle grows out of the clicked poster ──
+  const caseStudy = initCaseStudy({
+    projects: PROJECTS, reduced: REDUCED,
+    originOf: i => cards[i].querySelector('.card-poster').getBoundingClientRect(),
+    onOpen: () => tagEl.classList.remove('on'),
+  });
+  const openCase = i => caseStudy.open(i);
 
 
   // ══════════════════════════════════════════════════════════════
@@ -1625,10 +1107,251 @@
     // hero doesn't move anything, so that stretch doesn't count
     scrollOffset: () => scrollY - clamp(scrollY - hero.offsetTop, 0, hero.offsetHeight - innerHeight),
   });
-  // contact keeps its blinks and slabs; the page-wide layer handles the trail
-  const contactPix = new PixelField(document.getElementById('pixels'), document.getElementById('contact'), {
-    slabs: 7, color: SWIRL, noTrail: true,
-  });
+  // ══════════════════════════════════════════════════════════════
+  // CONTACT FIELD — one live piece behind About and Contact: warped noise printed through a
+  // halftone grid, in the site's one periwinkle blue. In About it is faint round dots, kept well back so it
+  // doesn't pull at the text; crossing into Contact it comes up to full strength and the dots
+  // square off into pixels. The pointer swells it, it stays quiet behind the text, and it reads
+  // the cursor trail's own energy grid: where the pixel critters are it opens a hole for them,
+  // and it lights up in their wake as they fade.
+  // No WebGL → the older layers take its place (PixelField in Contact, ABOUT BACKDROP behind About).
+  // ══════════════════════════════════════════════════════════════
+  let contactPix = null, liveContact = false;
+  (function contactField() {
+    let cv = document.getElementById('pixels');
+    const contact = document.getElementById('contact');
+    const fallback = fresh => {
+      if (fresh) { const n = cv.cloneNode(false); cv.replaceWith(n); cv = n; }   // a canvas that already gave a WebGL context can't give a 2D one
+      contactPix = new PixelField(cv, contact, { slabs: 7, color: SWIRL, noTrail: true });
+    };
+    let gl = null;
+    try { gl = cv.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false }); } catch (err) { gl = null; }
+    if (!gl) { fallback(false); return; }
+
+    const FRAG = `
+      precision highp float;
+      uniform vec2  uRes;
+      uniform float uTime, uDpr, uCell, uView, uEnergy, uScale, uWarp, uLo, uHi, uTrailSub, uTrailOn;
+      uniform float uSeam;                // where About ends and Contact starts, CSS px from the canvas top
+      uniform vec2  uPtr, uOff;
+      uniform vec3  uA;                   // the one colour everything prints in
+      uniform vec4  uQuietA, uQuietB, uQuietC;   // headline + links, legal line, About text: x, y, w, h in CSS px from the canvas corner
+      uniform vec4  uTrailMap;            // canvas corner in the viewport (x, y), 1 / trail grid size (x, y)
+      uniform sampler2D uTrail;           // the cursor trail's energy, one texel per 18px cell
+
+      vec3 mod289(vec3 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec2 mod289(vec2 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec3 permute(vec3 x){ return mod289(((x * 34.0) + 1.0) * x); }
+      float snoise(vec2 v){
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+        vec2 i  = floor(v + dot(v, C.yy));
+        vec2 x0 = v - i + dot(i, C.xx);
+        vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+        vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.0);
+        m = m * m; m = m * m;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
+        vec3 g;
+        g.x  = a0.x * x0.x + h.x * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+      }
+      // 1 inside the box, easing to 0 over 80px outside it
+      float box(vec2 p, vec4 r){
+        vec2 d = max(r.xy - p, p - (r.xy + r.zw));
+        return 1.0 - smoothstep(0.0, 80.0, max(max(d.x, d.y), 0.0));
+      }
+
+      void main(){
+        vec2 frag = gl_FragCoord.xy;
+        float cell = uCell * uDpr;
+        vec2 c = (floor(frag / cell) + 0.5) * cell;                // this mark's centre
+        vec2 css = vec2(c.x, uRes.y - c.y) / uDpr;                 // the same, in CSS px from the top-left
+        float yC = (css.y - uSeam) / max(uRes.y / uDpr - uSeam, 1.0);   // below 0 in About, 0 → 1 down the footer
+        float k = smoothstep(-0.06, 0.26, yC);                     // 0 = About's quiet version, 1 = the footer at full strength
+        vec2 p = (c - 0.5 * uRes) / uView;
+        float t = uTime;
+
+        vec2 q = p * uScale + uOff;
+        vec2 w = vec2(snoise(q + vec2(0.0, t * 0.07)), snoise(q + vec2(5.2, -t * 0.06)));
+        float n = snoise(q + w * uWarp + t * 0.03) * 0.62 + snoise(q * 2.3 - w * 0.5) * 0.3;
+        n = n * 0.5 + 0.5;
+        float v = smoothstep(uLo, uHi, n) * mix(0.7, 1.0, k);
+
+        // the pointer swells it (less so in About)
+        float d = distance(css, uPtr) / 230.0;
+        float bump = exp(-d * d * 2.4) * uEnergy * mix(0.5, 1.0, k);
+        v = clamp(v + bump * 0.7, 0.0, 1.0);
+
+        // quiet behind the text
+        v *= 1.0 - max(max(box(css, uQuietA) * 0.74, box(css, uQuietB) * 0.86), box(css, uQuietC) * 0.7);
+
+        // the cursor characters: a hole where they are, a bright wake where they have just been
+        vec2 tuv = vec2((css.x + uTrailMap.x) * uTrailMap.z, (css.y + uTrailMap.y + uTrailSub) * uTrailMap.w);
+        float e = texture2D(uTrail, tuv).r * uTrailOn;
+        float hole = smoothstep(0.07, 0.2, e);
+        float wake = smoothstep(0.004, 0.06, e) * (1.0 - hole);
+        v = max(v, wake * 0.92) * (1.0 - hole);
+
+        // print it: round dots up top, square pixels lower down
+        float sq = smoothstep(0.2, 0.72, yC);
+        vec2 o = (frag - c) / cell;
+        float r = 0.5 * sqrt(v) * 0.96;
+        float dist = mix(length(o), max(abs(o.x), abs(o.y)), sq);
+        float aa = 0.75 / cell;
+        float a = smoothstep(r + aa, r - aa, dist) * step(0.015, v);
+
+        // one colour throughout: the site's periwinkle, the same as the cursor trail. No second blues,
+        // no highlight under the pointer or in the wake; the marks only swell and part.
+        vec3 col = uA;
+        // faint through About (and easing in from its top edge), full in the footer
+        a *= mix(0.2, 0.92, k) * smoothstep(0.03, 0.34, css.y / max(uSeam, 1.0));
+        gl_FragColor = vec4(col * a, a);
+      }`;
+    const U = {};
+    try {
+      const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
+      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, 'p');
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      ['uRes', 'uTime', 'uDpr', 'uCell', 'uView', 'uEnergy', 'uScale', 'uWarp', 'uLo', 'uHi', 'uTrailSub', 'uTrailOn', 'uPtr', 'uOff', 'uA', 'uQuietA', 'uQuietB', 'uQuietC', 'uSeam', 'uTrailMap', 'uTrail']
+        .forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
+    } catch (err) { console.error(err); fallback(true); return; }
+    liveContact = true;
+    // out of Contact and onto the page itself, behind both sections (like the cursor trail's layer)
+    const about = document.getElementById('about');
+    cv.classList.add('live-field');
+    document.body.appendChild(cv);
+
+    // the trail grid as a texture (one byte per cell, re-uploaded each frame)
+    const trailTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, trailTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, 1, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+    let trailBuf = null;
+
+    // this visit's layout of the field
+    const F = { ox: Math.random() * 60, oy: Math.random() * 60, scale: 1.0 + Math.random() * 0.9, warp: 0.5 + Math.random() * 0.6, lo: 0.4 + Math.random() * 0.06 };
+    const headline = contact.querySelector('h2'), links = contact.querySelector('.contact-links'), foot = contact.querySelector('.contact-foot');
+    const aboutText = about.querySelector('.about-text');
+    const range = document.createRange();
+    let W = 0, H = 0, seam = 0, dpr = 1, quiet = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], quietAt = 0;
+    const ptr = { x: -1e4, y: -1e4, inside: false, energy: 0, at: 0 };
+    addEventListener('pointermove', e => { ptr.x = e.clientX; ptr.y = e.clientY; ptr.at = performance.now(); }, { passive: true });
+
+    function size() {
+      seam = about.offsetHeight;                               // where About ends and Contact starts
+      const w = document.documentElement.clientWidth, h = seam + contact.offsetHeight;
+      if (!w || !h) return;
+      const top = Math.round(about.getBoundingClientRect().top + scrollY);
+      const d = Math.min(devicePixelRatio || 1, 1.5, Math.sqrt(6e6 / (w * h)));   // at most ~6 megapixels however tall the two sections get
+      if (w === W && h === H && d === dpr && cv.style.top === top + 'px') return;
+      W = w; H = h; dpr = d;
+      cv.style.top = top + 'px'; cv.style.height = H + 'px';
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      gl.viewport(0, 0, cv.width, cv.height);
+      quietAt = 0;
+      if (!running) draw(performance.now());
+    }
+    // where the text sits, measured against the canvas (the headline's last word changes width)
+    function measure(r0) {
+      range.selectNodeContents(headline);
+      const t = range.getBoundingClientRect(), l = links.getBoundingClientRect();
+      const a = { left: Math.min(t.left, l.left), top: t.top, width: Math.max(t.right, l.right) - Math.min(t.left, l.left), height: l.bottom - t.top };
+      quiet = [a, foot.getBoundingClientRect(), aboutText.getBoundingClientRect()].map(r => [r.left - r0.left, r.top - r0.top, r.width, r.height]);
+    }
+
+    let running = false, visible = false, last = 0, clock = REDUCED ? 8 : Math.random() * 40;
+    let footerShowing = false;
+    function draw(now) {
+      if (!W || !H) return;
+      const r0 = cv.getBoundingClientRect();
+      // only the band that's on screen (plus a margin for scrolling) is worth the GPU's time
+      const y0 = Math.max(0, -r0.top - 300), y1 = Math.min(H, innerHeight - r0.top + 300);
+      if (y1 <= y0) return;
+      footerShowing = r0.top + seam < innerHeight;
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(0, Math.floor((H - y1) * dpr), cv.width, Math.ceil((y1 - y0) * dpr));
+      if (now - quietAt > 600) { measure(r0); quietAt = now; }
+      const inside = ptr.x >= r0.left && ptr.x <= r0.right && ptr.y >= r0.top && ptr.y <= r0.bottom;
+      const moving = now - ptr.at < 1400;
+      ptr.energy += ((inside ? (moving ? 1 : 0.2) : 0) - ptr.energy) * (REDUCED ? 1 : 0.08);
+
+      // the trail's energy grid, as it stands this frame
+      const f = heroPix.field;
+      let trailOn = 0;
+      if (f && heroPix.cols) {
+        if (!trailBuf || trailBuf.length !== f.length) trailBuf = new Uint8Array(f.length);
+        for (let i = 0; i < f.length; i++) trailBuf[i] = f[i] >= 1 ? 255 : f[i] * 255;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, trailTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, heroPix.cols, heroPix.rows, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, trailBuf);
+        gl.uniform4f(U.uTrailMap, r0.left, r0.top, 1 / (heroPix.cols * heroPix.cell), 1 / (heroPix.rows * heroPix.cell));
+        gl.uniform1f(U.uTrailSub, heroPix.sub || 0);
+        trailOn = 1;
+      }
+      gl.uniform1i(U.uTrail, 0);
+      gl.uniform1f(U.uTrailOn, trailOn);
+      gl.uniform2f(U.uRes, cv.width, cv.height);
+      gl.uniform1f(U.uTime, clock);
+      gl.uniform1f(U.uDpr, dpr);
+      gl.uniform1f(U.uCell, W < 720 ? 11 : 13);
+      gl.uniform1f(U.uView, innerHeight * dpr);
+      gl.uniform1f(U.uEnergy, ptr.energy);
+      gl.uniform1f(U.uScale, F.scale); gl.uniform1f(U.uWarp, F.warp);
+      gl.uniform1f(U.uLo, F.lo); gl.uniform1f(U.uHi, F.lo + 0.27);
+      gl.uniform2f(U.uOff, F.ox, F.oy);
+      gl.uniform2f(U.uPtr, ptr.x - r0.left, ptr.y - r0.top);
+      gl.uniform3f(U.uA, SWIRL[0] / 255, SWIRL[1] / 255, SWIRL[2] / 255);
+      gl.uniform4f(U.uQuietA, ...quiet[0]);
+      gl.uniform4f(U.uQuietB, ...quiet[1]);
+      gl.uniform4f(U.uQuietC, ...quiet[2]);
+      gl.uniform1f(U.uSeam, seam);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    function frame(now) {
+      if (!running) return;
+      requestAnimationFrame(frame);
+      if (now - last < 1000 / (footerShowing ? 60 : 30) - 3) return;   // 60fps in the footer, 30 while it's only About's faint version
+      clock += Math.min((now - last) / 1000, 0.05); last = now;
+      draw(now);
+    }
+    // runs only while some of it is on screen, the tab is showing, and no case study covers the page
+    function sync() {
+      const want = visible && !document.hidden && !REDUCED && !document.body.classList.contains('case-open');
+      if (want && !running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+      else if (!want) running = false;
+    }
+    new IntersectionObserver(es => { visible = es[es.length - 1].isIntersecting; sync(); if (REDUCED && visible) draw(performance.now()); }).observe(cv);
+    document.addEventListener('visibilitychange', sync);
+    new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    const ro = new ResizeObserver(size);
+    ro.observe(about); ro.observe(contact); ro.observe(document.body);
+    addEventListener('load', size);
+    // reduced motion: no loop, so redraw the still frame for whichever band has scrolled into view
+    if (REDUCED) { let q = false; addEventListener('scroll', () => { if (visible && !q) { q = true; requestAnimationFrame(() => { q = false; draw(performance.now()); }); } }, { passive: true }); }
+    size();
+  })();
 
   // ══════════════════════════════════════════════════════════════
   // HERO TYPE — near the cursor, hero text dissolves into halftone
@@ -1777,7 +1500,7 @@
     if (t - lastLoop < 1000 / 30 - 2) return;
     lastLoop = t;
     heroPix.draw(t);
-    contactPix.draw(t);
+    if (contactPix) contactPix.draw(t);   // only when the live contact field couldn't start
   })(0);
 
   // ══════════════════════════════════════════════════════════════
@@ -1799,8 +1522,15 @@
       { src: 'about-friend.jpg',     pos: '55% 50%', alt: 'Robert Capron and a friend taking a selfie outside on a sunny day' },
       { src: 'about-hood.jpg',       pos: '50% 50%', alt: 'Robert Capron bundled up in a fur-lined hood against a pale sky' },
     ];
-    // preload every photo as an Image so the dissolve can draw both the old and the new one
-    PHOTOS.forEach(p => { p.img = new Image(); p.img.src = p.src; });
+    // the dissolve draws both the old and the new photo from Image objects; they're fetched once
+    // About is within a screen of the viewport, not on page load
+    PHOTOS.forEach(p => { p.img = new Image(); });
+    let fetched = false;
+    const fetchPhotos = () => { if (fetched) return; fetched = true; PHOTOS.forEach(p => { p.img.decoding = 'async'; p.img.src = p.src; }); };
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { fetchPhotos(); io.disconnect(); } }, { rootMargin: '100% 0px' });
+      io.observe(media);
+    } else fetchPhotos();
     const showing = [0, 1];       // PHOTOS index in each slot
     let nextPhoto = 2, turn = 0, busy = false;
     const SWIRL = '#6b8fff', PAPER_FILL = '#f4f3ef';
@@ -1861,10 +1591,11 @@
     function advance(si) {
       let k = nextPhoto;
       while (showing.includes(k)) k = (k + 1) % PHOTOS.length;   // never show the same photo twice
+      if (!PHOTOS[k].img.complete || !PHOTOS[k].img.naturalWidth) return;   // not downloaded yet: wait for the next turn
       nextPhoto = (k + 1) % PHOTOS.length;
       dissolveTo(si, k);
     }
-    slots.forEach((slot, si) => { slot.style.cursor = 'pointer'; slot.addEventListener('click', () => advance(si)); });
+    slots.forEach((slot, si) => { slot.style.cursor = 'pointer'; slot.addEventListener('click', () => { fetchPhotos(); advance(si); }); });
     if (REDUCED) return;
     // slow, alternating rhythm; only while the section is on screen and the tab is visible
     let visible = false;
@@ -1920,13 +1651,18 @@
       return cv;
     }
     const animated = [];
+    let palsVisible = false, ticking = false;
     function tick(now) {
+      if (!palsVisible || document.hidden) { ticking = false; return; }   // the loop stops off screen
       for (const a of animated) {
         const f = Math.floor(now / 1000 * a.fps) % a.frames.length;
         if (f !== a.cur) { a.cur = f; a.ctx.clearRect(0, 0, a.cv.width, a.cv.height); a.ctx.drawImage(a.frames[f], 0, 0); }
       }
       requestAnimationFrame(tick);
     }
+    const startTick = () => { if (!ticking && animated.length && palsVisible) { ticking = true; requestAnimationFrame(tick); } };
+    new IntersectionObserver(es => { palsVisible = es[es.length - 1].isIntersecting; startTick(); }).observe(media);
+    document.addEventListener('visibilitychange', startTick);
     // load a sprite (still or strip) into an element as a canvas sticker
     function mount(it, el) {
       const img = new Image();
@@ -1939,7 +1675,7 @@
           const ctx = cv.getContext('2d');
           ctx.drawImage(frames[0], 0, 0);
           el.appendChild(cv);
-          if (!REDUCED) { animated.push({ frames, fps: it.fps, cv, ctx, cur: 0 }); if (animated.length === 1) requestAnimationFrame(tick); }
+          if (!REDUCED) { animated.push({ frames, fps: it.fps, cv, ctx, cur: 0 }); startTick(); }
         } else {
           el.appendChild(spriteSticker(img, 0, img.naturalWidth, img.naturalHeight, it.scale || 1, it.smooth));
         }
@@ -1979,7 +1715,7 @@
     peek.innerHTML = document.querySelector('#logo svg').outerHTML
       .replace(/id="lg(\d)"/g, 'id="pk$1"').replace(/url\(#lg(\d)\)/g, 'url(#pk$1)')
       .replace(/ id="lg-(plate|jaw)"/g, ' class="lg-$1"');
-    addLogoRig(peek.querySelector('svg'), peek);   // looks around and blinks in sync with the logo
+    addLogoRig(peek.querySelector('svg'), peek);   // looks around by itself; hovering him makes him blink
     media.appendChild(peek);
     peek.addEventListener('pointerenter', () => showTag(layer.classList.contains('out') ? 'Click to put them away' : 'Psst. Click me'));
     peek.addEventListener('pointerleave', hideTag);
@@ -2005,7 +1741,7 @@
   (function aboutBackdrop() {
     const about = document.getElementById('about');
     const contact = document.getElementById('contact');
-    if (!about || !contact) return;
+    if (!about || !contact || liveContact) return;   // the live field (CONTACT FIELD) covers About when it's running
     // one canvas behind both sections, so the field runs from About into the top of Contact
     const cv = document.createElement('canvas');
     cv.className = 'about-backdrop';
