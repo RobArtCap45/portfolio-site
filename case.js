@@ -1,7 +1,7 @@
 // Robert Capron — case study sheet, shared by the main site and /v2/.
-// Two reading speeds on one screen: the pinned side column is the skim layer (title, summary,
-// facts, chapter list that tracks the scroll); the body is the full read, and each section opens
-// with one takeaway line. The look comes from each site's own CSS.
+// Two reading speeds on one page: the head (title, summary, facts) and one takeaway line per
+// section are the skim layer; the body under them is the full read, across the whole width.
+// A small chapter list follows you down the right edge. The look comes from each site's own CSS.
 //
 //   const cs = initCaseStudy({ projects, originOf, reduced, base, onOpen, onClose });
 //   cs.open(i) · cs.close() · cs.isOpen()
@@ -24,14 +24,16 @@
   const SHELL = `
     <button id="case-close" type="button">Close <span aria-hidden="true">(esc)</span></button>
     <div class="case-inner">
-      <aside class="case-side">
+      <header class="case-head">
         <div class="case-kicker micro"><span class="n num" id="case-num"></span><span class="muted" id="case-cat"></span></div>
         <h2 class="display" id="case-title"></h2>
         <span class="micro" id="case-tag"></span>
-        <p class="case-summary" id="case-summary"></p>
-        <dl class="case-facts" id="case-facts"></dl>
-        <nav class="case-chapters" aria-label="Chapters"><div class="case-chapters-list" id="case-chapters"></div></nav>
-      </aside>
+        <div class="case-intro">
+          <p class="case-summary" id="case-summary"></p>
+          <dl class="case-facts" id="case-facts"></dl>
+        </div>
+      </header>
+      <nav class="case-chapters" aria-label="Chapters"><div class="case-chapters-list" id="case-chapters"></div></nav>
       <div class="case-body">
         <div id="case-cover"></div>
         <div id="case-desc"></div>
@@ -75,7 +77,7 @@
         const v = make('video');
         v.src = url(o.video); if (o.poster) v.poster = url(o.poster);
         v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'none';
-        if (o.w && o.h) v.style.aspectRatio = `${o.w} / ${o.h}`;   // the poster's shape, so nothing jumps or crops
+        if (o.w && o.h) { v.style.aspectRatio = `${o.w} / ${o.h}`; v.style.setProperty('--ar', o.w / o.h); }   // the poster's shape, so nothing jumps or crops
         v.setAttribute('aria-label', o.caption || `${title} video`);
         if (vidWatch) vidWatch.observe(v); else v.autoplay = true;
         fig.appendChild(v);
@@ -83,7 +85,7 @@
         const img = make('img');
         img.alt = o.caption || `${title} screen`;
         img.decoding = 'async';
-        if (o.w && o.h) { img.width = o.w; img.height = o.h; }   // reserves the space before the file arrives
+        if (o.w && o.h) { img.width = o.w; img.height = o.h; img.style.setProperty('--ar', o.w / o.h); }   // reserves the space before the file arrives
         if (!eager) img.loading = 'lazy';
         img.src = url(o.src);
         fig.appendChild(img);
@@ -111,8 +113,10 @@
     function setOrigin(i) {
       const r = originOf(i);
       caseEl.style.transition = 'none';
-      caseEl.style.setProperty('--cx', r ? `${r.left + r.width / 2}px` : '50%');
-      caseEl.style.setProperty('--cy', r ? `${r.top + r.height / 2}px` : '50%');
+      // keep the centre on screen, so the circle always reaches every corner
+      const clampTo = (v, max) => Math.min(max, Math.max(0, v));
+      caseEl.style.setProperty('--cx', r ? `${clampTo(r.left + r.width / 2, innerWidth)}px` : '50%');
+      caseEl.style.setProperty('--cy', r ? `${clampTo(r.top + r.height / 2, innerHeight)}px` : '50%');
       caseEl.getBoundingClientRect();   // commit the new centre before the transition comes back
       caseEl.style.transition = '';
     }
@@ -192,10 +196,11 @@
         sec.id = `case-sec-${k + 1}`;
         const bar = make('div', 'case-sec-bar micro');
         bar.append(make('span', 'num', pad2(k + 1)), make('span', 'num muted', `/ ${pad2(secs.length)}`));
-        const text = make('div', 'case-text');
-        text.appendChild(make('h3', null, s.title));
-        if (s.take) text.appendChild(make('p', 'case-take', s.take));
-        s.body.forEach(t => text.appendChild(para(t)));
+        // text in two parts so wide screens can set them side by side: the lead (title + takeaway) and the copy
+        const text = make('div', 'case-text'), lead = make('div', 'case-lead'), copy = make('div', 'case-copy');
+        lead.appendChild(make('h3', null, s.title));
+        if (s.take) lead.appendChild(make('p', 'case-take', s.take));
+        s.body.forEach(t => copy.appendChild(para(t)));
         if (s.items.length) {
           const dl = make('dl', 'case-items');
           s.items.forEach(([k2, v]) => {
@@ -203,12 +208,14 @@
             row.append(make('dt', 'micro', k2), make('dd', null, v));
             dl.appendChild(row);
           });
-          text.appendChild(dl);
+          copy.appendChild(dl);
         }
+        text.appendChild(lead);
+        if (copy.childNodes.length) text.appendChild(copy); else text.classList.add('case-text--lead-only');
         let figs = null;
         if (s.images.length) {
-          figs = make('div', 'case-figs');
           const n = Math.min(s.cols || 1, s.images.length);
+          figs = make('div', n === 1 ? 'case-figs case-figs--solo' : 'case-figs');
           figs.style.setProperty('--n', n);
           figs.style.setProperty('--ns', Math.min(n, 2));   // phones: two across at most
           s.images.forEach(im => figs.appendChild(figure(im, p.title)));
@@ -246,8 +253,6 @@
       $('case-next').onclick = () => open(n);
 
       caseEl.scrollTop = 0;
-      const side = caseEl.querySelector('.case-side');
-      side.scrollTop = 0;
       caseEl.setAttribute('aria-hidden', 'false');
       caseEl.classList.remove('closing');
       caseEl.classList.add('open');

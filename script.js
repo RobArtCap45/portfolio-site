@@ -64,7 +64,7 @@
       panels.forEach(el => { el.setAttribute('fill', fill); el.setAttribute('y', p.py); el.setAttribute('height', p.ph); });
       eyes.forEach((el, k) => { el.setAttribute('cx', p.e[k][0]); el.setAttribute('cy', p.e[k][1]); el.setAttribute('r', p.r); });
       teeth.forEach(el => el.setAttribute('height', p.th));
-      jaw.setAttribute('y', p.jy); jaw.setAttribute('height', 272 - p.jy);
+      jaw.setAttribute('y', p.jy); jaw.setAttribute('height', Math.max(0, 272 - p.jy));   // easing can land a hair past 272
     }
     const mix = (A, B, t) => ({
       px: lerp(A.px, B.px, t), pw: lerp(A.pw, B.pw, t), py: lerp(A.py, B.py, t), ph: lerp(A.ph, B.ph, t),
